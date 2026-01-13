@@ -1,3 +1,15 @@
+# HandyGemini
+
+A OS-level tool that enables users to get answers quickly from Gemini, together with user selected context (e.g. highlighted text, screenshot, active window image)
+
+Additions to Handy:
+- Add Login to Google to allow authenticated interactions with Gemini
+- Send audio + context directly to Gemini
+- Add Gemini Model selection (flash, pro, thinking)
+- Add multiple hotkey variations to handle the transmission of context (highlighted text, full screen, active window only)
+- Add popup window to display gemini response
+
+
 # Handy
 
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/WVBeWsNXK4)
