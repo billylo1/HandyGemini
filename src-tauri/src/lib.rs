@@ -5,6 +5,8 @@ mod audio_feedback;
 pub mod audio_toolkit;
 mod clipboard;
 mod commands;
+mod gemini_client;
+mod google_auth;
 mod helpers;
 mod input;
 mod llm_client;
@@ -227,6 +229,34 @@ fn trigger_update_check(app: AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load .env file if it exists
+    // Try loading from project root (parent directory of src-tauri), then current dir, then standard location
+    let env_loaded = dotenv::from_path("../.env")
+        .or_else(|_| dotenv::from_path(".env"))
+        .or_else(|_| {
+            dotenv::dotenv().map(|_| ())
+        });
+    
+    match env_loaded {
+        Ok(_) => {
+            log::info!("Loaded .env file");
+            // Log that we found the env vars (without exposing values)
+            if std::env::var("GOOGLE_OAUTH_CLIENT_ID").is_ok() {
+                log::info!("GOOGLE_OAUTH_CLIENT_ID is configured");
+            } else {
+                log::warn!("GOOGLE_OAUTH_CLIENT_ID not found in environment");
+            }
+            if std::env::var("GOOGLE_OAUTH_CLIENT_SECRET").is_ok() {
+                log::info!("GOOGLE_OAUTH_CLIENT_SECRET is configured");
+            } else {
+                log::warn!("GOOGLE_OAUTH_CLIENT_SECRET not found in environment");
+            }
+        }
+        Err(e) => {
+            log::warn!("Could not load .env file: {} (this is okay if using system env vars)", e);
+        }
+    }
+    
     // Parse console logging directives from RUST_LOG, falling back to info-level logging
     // when the variable is unset
     let console_filter = build_console_filter();
@@ -275,6 +305,11 @@ pub fn run() {
         commands::open_log_dir,
         commands::open_app_data_dir,
         commands::check_apple_intelligence_available,
+        commands::google_auth::start_google_oauth,
+        commands::google_auth::get_google_auth_status,
+        commands::google_auth::logout_google,
+        commands::google_auth::get_google_access_token,
+        commands::gemini::ask_gemini,
         commands::models::get_available_models,
         commands::models::get_model_info,
         commands::models::download_model,

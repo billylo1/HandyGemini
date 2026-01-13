@@ -1,4 +1,6 @@
 pub mod audio;
+pub mod gemini;
+pub mod google_auth;
 pub mod history;
 pub mod models;
 pub mod transcription;

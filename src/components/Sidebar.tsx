@@ -47,7 +47,7 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.postProcessing",
     icon: Sparkles,
     component: PostProcessingSettings,
-    enabled: (settings) => settings?.post_process_enabled ?? false,
+    enabled: () => true, // Always show to allow Gemini/Google login access
   },
   history: {
     labelKey: "sidebar.history",

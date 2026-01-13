@@ -9,6 +9,20 @@ Additions to Handy:
 - Add multiple hotkey variations to handle the transmission of context (highlighted text, full screen, active window only)
 - Add popup window to display gemini response
 
+## Google OAuth Setup
+
+To enable Gemini AI features, you need to set up Google OAuth credentials. See [GOOGLE_OAUTH_SETUP.md](GOOGLE_OAUTH_SETUP.md) for detailed instructions.
+
+Quick start:
+1. Create a Google Cloud project and enable Generative Language API
+2. Create OAuth 2.0 credentials (Desktop app type)
+3. Set environment variables:
+   ```bash
+   export GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+   export GOOGLE_OAUTH_CLIENT_SECRET="your-client-secret"
+   ```
+4. Run the app and sign in via Settings > Post Process > Google Login
+
 
 # Handy
 

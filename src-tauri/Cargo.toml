@@ -72,6 +72,14 @@ ferrous-opencc = "0.2.3"
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+oauth2 = "4.4"
+url = "2.5"
+base64 = "0.22"
+rand = "0.8"
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+dotenv = "0.15"
 
 [target.'cfg(unix)'.dependencies]
 signal-hook = "0.3"

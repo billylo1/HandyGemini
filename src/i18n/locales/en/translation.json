@@ -207,6 +207,16 @@
         "remove": "Remove {{word}}"
       }
     },
+    "gemini": {
+      "googleLogin": {
+        "title": "Google Login",
+        "description": "Sign in with Google to enable Gemini AI features. This allows you to get answers from Gemini using your transcribed text and context.",
+        "login": "Sign in with Google",
+        "logout": "Sign out",
+        "authenticating": "Authenticating...",
+        "authenticated": "Authenticated"
+      }
+    },
     "postProcessing": {
       "title": "Post Process",
       "disabledNotice": "Post processing is currently disabled. Enable it in Debug settings to configure.",

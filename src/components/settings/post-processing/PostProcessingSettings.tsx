@@ -20,6 +20,7 @@ import { ApiKeyField } from "../PostProcessingSettingsApi/ApiKeyField";
 import { ModelSelect } from "../PostProcessingSettingsApi/ModelSelect";
 import { usePostProcessProviderState } from "../PostProcessingSettingsApi/usePostProcessProviderState";
 import { useSettings } from "../../../hooks/useSettings";
+import { GoogleLogin } from "../GoogleLogin";
 
 const DisabledNotice: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -458,6 +459,10 @@ export const PostProcessingSettings: React.FC = () => {
 
       <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
         <PostProcessingSettingsPrompts />
+      </SettingsGroup>
+
+      <SettingsGroup title={t("settings.gemini.googleLogin.title")}>
+        <GoogleLogin descriptionMode="inline" grouped={true} />
       </SettingsGroup>
     </div>
   );
