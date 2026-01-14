@@ -63,8 +63,9 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt update
-          sudo apt install -y libasound2-dev pkg-config libssl-dev \
-            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf cmake
+          sudo apt install -y build-essential libasound2-dev pkg-config libssl-dev \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf cmake \
+            libopenblas-dev libx11-dev libxtst-dev libxrandr-dev
 
       - name: Install frontend dependencies
         run: bun install
@@ -141,8 +142,9 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt update
-          sudo apt install -y libasound2-dev pkg-config libssl-dev \
-            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf cmake
+          sudo apt install -y build-essential libasound2-dev pkg-config libssl-dev \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf cmake \
+            libopenblas-dev libx11-dev libxtst-dev libxrandr-dev
 
       - name: Install frontend dependencies
         run: bun install
