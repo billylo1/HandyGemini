@@ -1,0 +1,150 @@
+name: "Build macOS"
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_release:
+        description: 'Upload to release (requires release-id)'
+        required: false
+        type: boolean
+        default: false
+      release_id:
+        description: 'Release ID (if uploading to release)'
+        required: false
+        type: string
+      enable_notarization:
+        description: 'Enable notarization (requires Apple credentials)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-macos:
+    permissions:
+      contents: write
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version from tauri.conf.json
+        id: get-version
+        run: |
+          VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+          echo "Application version from tauri.conf.json: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Rust targets for Universal Binary
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Build frontend
+        run: bun run build
+
+      - name: Find Developer ID certificate
+        id: find-cert
+        if: inputs.enable_notarization
+        run: |
+          # Find Developer ID Application certificate
+          DEVELOPER_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/' || echo "")
+          if [ -z "$DEVELOPER_ID" ]; then
+            echo "Error: No Developer ID Application certificate found in keychain."
+            echo "Please install a Developer ID Application certificate."
+            exit 1
+          fi
+          echo "certificate=$DEVELOPER_ID" >> "$GITHUB_OUTPUT"
+          echo "Found certificate: $DEVELOPER_ID"
+
+      - name: Update signing identity in tauri.conf.json
+        if: inputs.enable_notarization && steps.find-cert.outputs.certificate != ''
+        run: |
+          # Create backup of tauri.conf.json
+          cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.backup
+          # Update signing identity
+          jq --arg cert "${{ steps.find-cert.outputs.certificate }}" '.bundle.macOS.signingIdentity = $cert' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
+          echo "Updated signingIdentity: ${{ steps.find-cert.outputs.certificate }}"
+
+      - name: Temporarily disable updater artifacts if no signing key
+        if: inputs.enable_notarization == false || secrets.TAURI_SIGNING_PRIVATE_KEY == ''
+        run: |
+          # Create backup if not already done
+          if [ ! -f src-tauri/tauri.conf.json.backup ]; then
+            cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.backup
+          fi
+          # Disable createUpdaterArtifacts to avoid signing requirement
+          jq '.bundle.createUpdaterArtifacts = false' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
+
+      - name: Import Apple Developer Certificate
+        if: inputs.enable_notarization && secrets.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create variables file
+          echo "$APPLE_CERTIFICATE" > /tmp/certificate.p12
+          # Import certificate
+          security create-keychain -p "" build.keychain || true
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import /tmp/certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security || true
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain || true
+          # Clean up
+          rm -f /tmp/certificate.p12
+
+      - name: Build Tauri app (Universal Binary)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ inputs.enable_notarization && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ inputs.enable_notarization && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ inputs.enable_notarization && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ inputs.enable_notarization && steps.find-cert.outputs.certificate || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+        with:
+          tagName: v${{ steps.get-version.outputs.version }}
+          releaseName: HandyGemini v${{ steps.get-version.outputs.version }} (macOS Universal)
+          releaseId: ${{ inputs.release_id }}
+          args: --target universal-apple-darwin
+          releaseDraft: false
+          prerelease: false
+
+      - name: Restore tauri.conf.json
+        if: always()
+        run: |
+          if [ -f src-tauri/tauri.conf.json.backup ]; then
+            mv src-tauri/tauri.conf.json.backup src-tauri/tauri.conf.json
+          fi
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: HandyGemini-macOS-${{ steps.get-version.outputs.version }}
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 30
+
+      - name: Upload to release (if requested)
+        if: inputs.upload_to_release && inputs.release_id != ''
+        uses: softprops/action-gh-release@v1
+        with:
+          release_id: ${{ inputs.release_id }}
+          files: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
