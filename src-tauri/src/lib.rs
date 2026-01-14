@@ -138,6 +138,9 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
     app_handle.manage(gemini_conversation_manager.clone());
+    
+    // Initialize IP address cache
+    app_handle.manage(std::sync::Arc::new(std::sync::Mutex::new(None::<String>)));
 
     // Initialize the shortcuts
     shortcut::init_shortcuts(app_handle);

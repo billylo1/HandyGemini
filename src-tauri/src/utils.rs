@@ -52,3 +52,54 @@ pub fn is_wayland() -> bool {
             .map(|v| v.to_lowercase() == "wayland")
             .unwrap_or(false)
 }
+
+/// Get the user's public IP address with caching
+/// Uses ipify.org API to fetch the IP, caches it in the app state
+pub async fn get_user_ip_address(app: &tauri::AppHandle) -> Option<String> {
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use tauri::Manager;
+    
+    // Get cached IP from app state
+    let cached_ip = app.state::<Arc<Mutex<Option<String>>>>();
+    if let Ok(ip_mutex) = cached_ip.lock() {
+        if let Some(ref ip) = *ip_mutex {
+            return Some(ip.clone());
+        }
+    }
+    
+    // Fetch IP from ipify.org
+    let client = reqwest::Client::new();
+    match client
+        .get("https://api.ipify.org?format=text")
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+    {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.text().await {
+                    Ok(ip) => {
+                        let ip = ip.trim().to_string();
+                        // Cache the IP in app state
+                        if let Ok(mut ip_mutex) = cached_ip.lock() {
+                            *ip_mutex = Some(ip.clone());
+                        }
+                        Some(ip)
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to read IP address response: {}", e);
+                        None
+                    }
+                }
+            } else {
+                log::warn!("Failed to fetch IP address: HTTP {}", response.status());
+                None
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to fetch IP address: {}", e);
+            None
+        }
+    }
+}

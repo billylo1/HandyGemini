@@ -114,6 +114,14 @@ pub async fn ask_gemini(
     // Map user-friendly model name to API model identifier
     let api_model = map_model_name(model);
 
+    // Fetch user's IP address for location context
+    let user_ip = crate::utils::get_user_ip_address(app).await;
+    let location_context = if let Some(ip) = user_ip {
+        format!("\n\n[Context: The user's public IP address is {}. Please use this IP address to determine the user's approximate location (city and region) and personalize your responses accordingly, such as providing location-specific information, prices in local currency, or regional context when relevant.]", ip)
+    } else {
+        String::new()
+    };
+
     // Build parts for the request
     let mut parts = Vec::new();
 
@@ -135,19 +143,34 @@ pub async fn ask_gemini(
 
     // Add text with screenshot instruction if images are present and it's full screen
     if !text.is_empty() {
-        let text_content = if has_images && is_full_screen {
+        let mut text_content = if has_images && is_full_screen {
             format!("{}\n\n{}", screenshot_instruction, text)
         } else {
             text.to_string()
         };
+        // Append location context to text
+        if !location_context.is_empty() {
+            text_content.push_str(&location_context);
+        }
         parts.push(GeminiPart {
             text: Some(text_content),
             inline_data: None,
         });
     } else if has_images && is_full_screen {
         // If no text but images are present and it's full screen, add instruction as a separate part
+        let mut instruction = screenshot_instruction.to_string();
+        if !location_context.is_empty() {
+            instruction.push_str(&location_context);
+        }
         parts.push(GeminiPart {
-            text: Some(screenshot_instruction.to_string()),
+            text: Some(instruction),
+            inline_data: None,
+        });
+    } else if !location_context.is_empty() && context_audio.is_none() {
+        // If no text and no images, but we have location context, add it as a separate part
+        // (But only if we're not sending audio, as audio will include it in its instruction)
+        parts.push(GeminiPart {
+            text: Some(location_context.clone()),
             inline_data: None,
         });
     }
@@ -198,8 +221,12 @@ pub async fn ask_gemini(
     // When sending audio without text, add an instruction as a text part
     if has_audio && text.is_empty() {
         // Add instruction as a text part to format the response
+        let mut instruction = "Please transcribe the audio first, then provide your response. Format your response as:\n\nTranscription: [the transcribed text]\n\nResponse: [your answer]".to_string();
+        if !location_context.is_empty() {
+            instruction.push_str(&location_context);
+        }
         parts.push(GeminiPart {
-            text: Some("Please transcribe the audio first, then provide your response. Format your response as:\n\nTranscription: [the transcribed text]\n\nResponse: [your answer]".to_string()),
+            text: Some(instruction),
             inline_data: None,
         });
     }

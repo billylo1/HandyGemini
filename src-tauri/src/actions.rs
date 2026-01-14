@@ -516,8 +516,17 @@ impl ShortcutAction for TranscribeAction {
         let tm = Arc::clone(&app.state::<Arc<TranscriptionManager>>());
         let hm = Arc::clone(&app.state::<Arc<HistoryManager>>());
 
-        change_tray_icon(app, TrayIconState::Transcribing);
-        show_transcribing_overlay(app);
+        // Check if using Gemini audio transcription - if so, skip local transcription overlay
+        let settings = get_settings(&ah);
+        let using_gemini_audio = settings.gemini_enabled 
+            && !settings.gemini_api_key.is_empty() 
+            && settings.gemini_send_audio;
+
+        if !using_gemini_audio {
+            // Only show transcribing overlay if using local transcription
+            change_tray_icon(app, TrayIconState::Transcribing);
+            show_transcribing_overlay(app);
+        }
 
         // Unmute before playing audio feedback so the stop sound is audible
         rm.remove_mute();
@@ -552,9 +561,116 @@ impl ShortcutAction for TranscribeAction {
                     samples.len()
                 );
 
+                // Check if we should send audio directly to Gemini (skip local transcription)
+                let settings_for_audio_check = get_settings(&ah);
+                let send_audio_directly = settings_for_audio_check.gemini_enabled 
+                    && !settings_for_audio_check.gemini_api_key.is_empty() 
+                    && settings_for_audio_check.gemini_send_audio;
+
                 let transcription_time = Instant::now();
                 let samples_clone = samples.clone(); // Clone for history saving
                 let samples_for_gemini = samples.clone(); // Clone for potential Gemini audio sending
+                
+                // If sending audio directly to Gemini, skip local transcription and send immediately
+                if send_audio_directly {
+                    info!("Sending audio directly to Gemini, skipping local transcription");
+                    
+                    // Show "Sending to Gemini" status on overlay
+                    utils::show_gemini_sending_overlay(&ah);
+                    
+                    let ah_clone = ah.clone();
+                    let gemini_model = settings_for_audio_check.gemini_model.clone();
+                    let gemini_api_key = settings_for_audio_check.gemini_api_key.clone();
+                    
+                    // Get conversation manager and history
+                    let conv_mgr = Arc::clone(&ah.state::<Arc<GeminiConversationManager>>());
+                    let conversation_history: Vec<gemini_client::ConversationMessage> = conv_mgr
+                        .get_history()
+                        .into_iter()
+                        .map(|msg| gemini_client::ConversationMessage {
+                            role: msg.role.clone(),
+                            text: msg.text.clone(),
+                        })
+                        .collect();
+                    
+                    let audio_samples = samples_for_gemini.clone();
+                    let conv_mgr_clone = Arc::clone(&conv_mgr);
+                    let screenshot_for_gemini = screenshot.clone();
+                    tauri::async_runtime::spawn(async move {
+                        // Prepare context images if screenshot was captured
+                        let context_images = screenshot_for_gemini.map(|img| vec![img]);
+                        
+                        match gemini_client::ask_gemini(
+                            &ah_clone,
+                            "", // Empty text when sending audio
+                            &gemini_model,
+                            &gemini_api_key,
+                            context_images, // Screenshot if Ctrl was pressed
+                            Some(audio_samples), // Send audio samples
+                            Some(16000), // Sample rate (16kHz, standard for Whisper)
+                            Some(conversation_history.clone()),
+                        )
+                        .await
+                        {
+                            Ok(gemini_response_data) => {
+                                info!("Received Gemini response from audio (answer length: {} chars)", gemini_response_data.answer.len());
+                                
+                                // Show "Answer is ready" status before hiding
+                                utils::show_gemini_ready_overlay(&ah_clone);
+                                
+                                // Small delay to show "ready" status, then hide overlay
+                                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                                
+                                // Hide overlay and update tray icon when response is received
+                                utils::hide_recording_overlay(&ah_clone);
+                                change_tray_icon(&ah_clone, TrayIconState::Idle);
+                                
+                                // Get transcription from Gemini
+                                let question_text = gemini_response_data.transcription
+                                    .as_ref()
+                                    .map(|t| t.clone())
+                                    .unwrap_or_else(|| "Audio transcription".to_string());
+                                
+                                // Add to conversation history
+                                conv_mgr_clone.add_user_message(question_text.clone());
+                                conv_mgr_clone.add_model_message(gemini_response_data.answer.clone());
+                                
+                                // Format response to include Gemini's transcription and answer
+                                let formatted_response = format!("**Q:** {}\n\n**A:** {}", question_text, gemini_response_data.answer);
+                                // Show Gemini popup with formatted response
+                                gemini_popup::show_gemini_popup(&ah_clone, formatted_response);
+                            }
+                            Err(e) => {
+                                error!("Failed to get Gemini response from audio: {}", e);
+                                // Hide overlay and update tray icon on error too
+                                utils::hide_recording_overlay(&ah_clone);
+                                change_tray_icon(&ah_clone, TrayIconState::Idle);
+                            }
+                        }
+                    });
+                    
+                    // Still save to history in background (with empty transcription since we're using Gemini)
+                    let hm_clone = Arc::clone(&hm);
+                    let samples_for_history = samples_clone.clone();
+                    tauri::async_runtime::spawn(async move {
+                        // Save with empty transcription - Gemini will provide the transcription
+                        if let Err(e) = hm_clone
+                            .save_transcription(
+                                samples_for_history,
+                                "".to_string(), // Empty transcription when using Gemini audio
+                                None,
+                                None,
+                            )
+                            .await
+                        {
+                            error!("Failed to save transcription to history: {}", e);
+                        }
+                    });
+                    
+                    return; // Exit early, don't do local transcription
+                }
+                
+                // Otherwise, do local transcription as before
                 match tm.transcribe(samples) {
                     Ok(transcription) => {
                         debug!(
