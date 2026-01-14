@@ -124,16 +124,34 @@ pub async fn ask_gemini(
 
     // Build parts for the request
     let mut parts = Vec::new();
+    
+    // Track whether location_context has been added to avoid duplication
+    let mut location_context_added = false;
 
     // Check if we have images before processing
     let has_images = context_images.is_some();
     
     // Only add screenshot instruction for full screen captures (not active window)
-    // Check screenshot mode from settings
+    // Check screenshot mode from settings, but account for platform fallbacks:
+    // On non-macOS, ActiveWindow falls back to full screen, so treat it as full screen
     let is_full_screen = if has_images {
         use crate::settings::{get_settings, ScreenshotMode};
         let settings = get_settings(app);
-        settings.screenshot_mode == ScreenshotMode::FullScreen
+        match settings.screenshot_mode {
+            ScreenshotMode::FullScreen => true,
+            ScreenshotMode::ActiveWindow => {
+                // On macOS, ActiveWindow is actually active window
+                // On other platforms, it falls back to full screen
+                #[cfg(target_os = "macos")]
+                {
+                    false
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    true // ActiveWindow falls back to full screen on non-macOS
+                }
+            }
+        }
     } else {
         false
     };
@@ -148,9 +166,10 @@ pub async fn ask_gemini(
         } else {
             text.to_string()
         };
-        // Append location context to text
-        if !location_context.is_empty() {
+        // Append location context to text (first time)
+        if !location_context.is_empty() && !location_context_added {
             text_content.push_str(&location_context);
+            location_context_added = true;
         }
         parts.push(GeminiPart {
             text: Some(text_content),
@@ -159,8 +178,9 @@ pub async fn ask_gemini(
     } else if has_images && is_full_screen {
         // If no text but images are present and it's full screen, add instruction as a separate part
         let mut instruction = screenshot_instruction.to_string();
-        if !location_context.is_empty() {
+        if !location_context.is_empty() && !location_context_added {
             instruction.push_str(&location_context);
+            location_context_added = true;
         }
         parts.push(GeminiPart {
             text: Some(instruction),
@@ -173,6 +193,7 @@ pub async fn ask_gemini(
             text: Some(location_context.clone()),
             inline_data: None,
         });
+        location_context_added = true;
     }
 
     // Ensure we have at least one part (text or audio)
@@ -222,8 +243,10 @@ pub async fn ask_gemini(
     if has_audio && text.is_empty() {
         // Add instruction as a text part to format the response
         let mut instruction = "Please transcribe the audio first, then provide your response. Format your response as:\n\nTranscription: [the transcribed text]\n\nResponse: [your answer]".to_string();
-        if !location_context.is_empty() {
+        // Only add location context if it hasn't been added already (e.g., in screenshot instruction)
+        if !location_context.is_empty() && !location_context_added {
             instruction.push_str(&location_context);
+            location_context_added = true;
         }
         parts.push(GeminiPart {
             text: Some(instruction),

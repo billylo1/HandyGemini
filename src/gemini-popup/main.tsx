@@ -137,7 +137,7 @@ const GeminiPopup: React.FC = () => {
     };
 
     // Set up close button after a short delay to ensure DOM is ready
-    const closeBtnTimeout = setTimeout(() => {
+    const buttonsTimeout = setTimeout(() => {
       const closeBtn = document.getElementById("closeBtn");
       if (closeBtn) {
         closeBtn.addEventListener("click", handleClose);
@@ -148,7 +148,7 @@ const GeminiPopup: React.FC = () => {
       listenersPromise.then((cleanup) => {
         if (cleanup) cleanup();
       });
-      clearTimeout(closeBtnTimeout);
+      clearTimeout(buttonsTimeout);
       const closeBtn = document.getElementById("closeBtn");
       if (closeBtn) {
         closeBtn.removeEventListener("click", handleClose);
@@ -177,11 +177,38 @@ const GeminiPopup: React.FC = () => {
     console.log("Render - loading:", loading, "responses count:", responses.length, "error:", error);
   }
   
+  // Set up reset button handler
+  useEffect(() => {
+    const handleReset = async () => {
+      try {
+        await commands.clearGeminiHistory();
+        setResponses([]);
+        setError(null);
+        setLoading(true);
+        lastResponseRef.current = "";
+        console.log("Conversation history cleared");
+      } catch (err) {
+        console.error("Failed to clear conversation history:", err);
+      }
+    };
+
+    const resetBtn = document.getElementById("resetBtn");
+    if (resetBtn) {
+      resetBtn.addEventListener("click", handleReset);
+      return () => {
+        resetBtn.removeEventListener("click", handleReset);
+      };
+    }
+  }, []); // Empty deps - only set up once
+
   return (
     <div className="container">
       <div className="header">
         <div className="title">Gemini Response</div>
-        <button className="close-btn" id="closeBtn">×</button>
+        <div className="header-actions">
+          <button className="reset-btn" id="resetBtn" title="Clear conversation history">Reset</button>
+          <button className="close-btn" id="closeBtn" title="Close">×</button>
+        </div>
       </div>
       <div className="response-content">
         {loading && responses.length === 0 && (

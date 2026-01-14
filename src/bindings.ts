@@ -446,6 +446,17 @@ async askGemini(text: string, model: string, apiKey: string, contextImages: numb
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Clear Gemini conversation history
+ */
+async clearGeminiHistory() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clear_gemini_history") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getAvailableModels() : Promise<Result<ModelInfo[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_available_models") };

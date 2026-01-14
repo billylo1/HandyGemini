@@ -323,6 +323,7 @@ pub fn run() {
         commands::google_auth::logout_google,
         commands::google_auth::get_google_access_token,
         commands::gemini::ask_gemini,
+        commands::gemini::clear_gemini_history,
         commands::models::get_available_models,
         commands::models::get_model_info,
         commands::models::download_model,

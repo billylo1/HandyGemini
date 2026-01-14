@@ -39,3 +39,12 @@ pub async fn ask_gemini(
     // Return just the answer for backward compatibility with existing code
     Ok(response.answer)
 }
+
+/// Clear Gemini conversation history
+#[tauri::command]
+#[specta::specta]
+pub fn clear_gemini_history(app: AppHandle) -> Result<(), String> {
+    let conv_mgr = app.state::<std::sync::Arc<crate::managers::gemini_conversation::GeminiConversationManager>>();
+    conv_mgr.clear();
+    Ok(())
+}
