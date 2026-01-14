@@ -103,10 +103,27 @@ pub async fn ask_gemini(
     // Build parts for the request
     let mut parts = Vec::new();
 
-    // Add text only if provided (when sending audio, text may be empty)
+    // Check if we have images before processing
+    let has_images = context_images.is_some();
+    
+    // Screenshot instruction to focus on the biggest canvas area
+    let screenshot_instruction = "When analyzing the screenshot, focus on the biggest canvas area only. Ignore UI elements, menus, and sidebars.";
+
+    // Add text with screenshot instruction if images are present
     if !text.is_empty() {
+        let text_content = if has_images {
+            format!("{}\n\n{}", screenshot_instruction, text)
+        } else {
+            text.to_string()
+        };
         parts.push(GeminiPart {
-            text: Some(text.to_string()),
+            text: Some(text_content),
+            inline_data: None,
+        });
+    } else if has_images {
+        // If no text but images are present, add instruction as a separate part
+        parts.push(GeminiPart {
+            text: Some(screenshot_instruction.to_string()),
             inline_data: None,
         });
     }
