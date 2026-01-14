@@ -245,6 +245,14 @@ impl ShortcutAction for TranscribeAction {
 
             recording_started = rm.try_start_recording(&binding_id);
             debug!("Recording started: {}", recording_started);
+            if recording_started {
+                // Play ready sound after a short delay to ensure mic is actually capturing
+                let app_clone = app.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    play_feedback_sound(&app_clone, SoundType::Ready);
+                });
+            }
         } else {
             // On-demand mode: Start recording first, then play audio feedback, then apply mute
             // This allows the microphone to be activated before playing the sound
@@ -263,6 +271,9 @@ impl ShortcutAction for TranscribeAction {
                     // to keep mute sequencing consistent in every mode.
                     play_feedback_sound_blocking(&app_clone, SoundType::Start);
                     rm_clone.apply_mute();
+                    // Play ready sound after mic is ready (additional delay)
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    play_feedback_sound(&app_clone, SoundType::Ready);
                 });
             } else {
                 debug!("Failed to start recording");

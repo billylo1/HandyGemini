@@ -218,6 +218,10 @@ impl SoundTheme {
         format!("resources/{}_start.wav", self.as_str())
     }
 
+    pub fn to_ready_path(&self) -> String {
+        format!("resources/{}_ready.wav", self.as_str())
+    }
+
     pub fn to_stop_path(&self) -> String {
         format!("resources/{}_stop.wav", self.as_str())
     }

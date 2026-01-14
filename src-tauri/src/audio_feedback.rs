@@ -9,8 +9,10 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use tauri::{AppHandle, Manager};
 
+#[derive(Debug)]
 pub enum SoundType {
     Start,
+    Ready,
     Stop,
 }
 
@@ -19,16 +21,40 @@ fn resolve_sound_path(
     settings: &AppSettings,
     sound_type: SoundType,
 ) -> Option<PathBuf> {
+    let is_ready = matches!(sound_type, SoundType::Ready);
+    let sound_type_str = if is_ready { "Ready" } else {
+        match sound_type {
+            SoundType::Start => "Start",
+            SoundType::Stop => "Stop",
+            _ => "Unknown",
+        }
+    };
     let sound_file = get_sound_path(settings, sound_type);
     let base_dir = get_sound_base_dir(settings);
-    app.path().resolve(&sound_file, base_dir).ok()
+    let path = app.path().resolve(&sound_file, base_dir).ok();
+    
+    debug!("Resolving sound path for {}: file={}, base_dir={:?}, resolved={:?}", 
+           sound_type_str, sound_file, base_dir, path.as_ref().map(|p| p.display().to_string()));
+    
+    // For Ready sound, fallback to Start sound if file doesn't exist
+    if path.is_none() && is_ready {
+        debug!("Ready sound file not found, falling back to start sound");
+        let start_file = get_sound_path(settings, SoundType::Start);
+        let fallback_path = app.path().resolve(&start_file, base_dir).ok();
+        debug!("Fallback path: {:?}", fallback_path.as_ref().map(|p| p.display().to_string()));
+        return fallback_path;
+    }
+    
+    path
 }
 
 fn get_sound_path(settings: &AppSettings, sound_type: SoundType) -> String {
     match (settings.sound_theme, sound_type) {
         (SoundTheme::Custom, SoundType::Start) => "custom_start.wav".to_string(),
+        (SoundTheme::Custom, SoundType::Ready) => "custom_ready.wav".to_string(),
         (SoundTheme::Custom, SoundType::Stop) => "custom_stop.wav".to_string(),
         (_, SoundType::Start) => settings.sound_theme.to_start_path(),
+        (_, SoundType::Ready) => settings.sound_theme.to_ready_path(),
         (_, SoundType::Stop) => settings.sound_theme.to_stop_path(),
     }
 }
@@ -42,11 +68,20 @@ fn get_sound_base_dir(settings: &AppSettings) -> tauri::path::BaseDirectory {
 
 pub fn play_feedback_sound(app: &AppHandle, sound_type: SoundType) {
     let settings = settings::get_settings(app);
+    let sound_type_str = match sound_type {
+        SoundType::Start => "Start",
+        SoundType::Ready => "Ready",
+        SoundType::Stop => "Stop",
+    };
     if !settings.audio_feedback {
+        debug!("Audio feedback disabled, skipping {} sound", sound_type_str);
         return;
     }
     if let Some(path) = resolve_sound_path(app, &settings, sound_type) {
+        debug!("Playing {} sound from: {}", sound_type_str, path.display());
         play_sound_async(app, path);
+    } else {
+        warn!("Could not resolve path for {} sound", sound_type_str);
     }
 }
 

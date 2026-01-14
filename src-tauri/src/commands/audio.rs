@@ -163,6 +163,7 @@ pub fn get_selected_output_device(app: AppHandle) -> Result<String, String> {
 pub async fn play_test_sound(app: AppHandle, sound_type: String) {
     let sound = match sound_type.as_str() {
         "start" => audio_feedback::SoundType::Start,
+        "ready" => audio_feedback::SoundType::Ready,
         "stop" => audio_feedback::SoundType::Stop,
         _ => {
             warn!("Unknown sound type: {}", sound_type);
