@@ -80,8 +80,17 @@ jobs:
           mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
           echo "Updated signingIdentity: ${{ steps.find-cert.outputs.certificate }}"
 
+      - name: Check if signing key is available
+        id: check-signing
+        run: |
+          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+            echo "has_signing_key=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_signing_key=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Temporarily disable updater artifacts if no signing key
-        if: inputs.enable_notarization == false || secrets.TAURI_SIGNING_PRIVATE_KEY == ''
+        if: inputs.enable_notarization == false || steps.check-signing.outputs.has_signing_key == 'false'
         run: |
           # Create backup if not already done
           if [ ! -f src-tauri/tauri.conf.json.backup ]; then
@@ -91,8 +100,18 @@ jobs:
           jq '.bundle.createUpdaterArtifacts = false' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
           mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
 
+      - name: Check if certificate is available
+        id: check-cert
+        if: inputs.enable_notarization
+        run: |
+          if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ]; then
+            echo "has_certificate=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_certificate=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Import Apple Developer Certificate
-        if: inputs.enable_notarization && secrets.APPLE_CERTIFICATE != ''
+        if: inputs.enable_notarization && steps.check-cert.outputs.has_certificate == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
