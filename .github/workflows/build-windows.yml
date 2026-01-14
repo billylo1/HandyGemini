@@ -67,6 +67,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUSTFLAGS: -C target-feature=-crt-static
+          CXXFLAGS: /MD
+          CFLAGS: /MD
         with:
           tagName: v${{ steps.get-version.outputs.version }}
           releaseName: HandyGemini v${{ steps.get-version.outputs.version }} (Windows)
