@@ -12,6 +12,7 @@ mod input;
 mod llm_client;
 mod managers;
 mod overlay;
+mod gemini_popup;
 mod settings;
 mod shortcut;
 mod signal_handle;
@@ -213,6 +214,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
     // Create the recording overlay window (hidden by default)
     utils::create_recording_overlay(app_handle);
+    gemini_popup::create_gemini_popup(app_handle);
 }
 
 #[tauri::command]
@@ -294,6 +296,9 @@ pub fn run() {
         shortcut::change_append_trailing_space_setting,
         shortcut::change_app_language_setting,
         shortcut::change_update_checks_setting,
+        shortcut::change_gemini_enabled_setting,
+        shortcut::change_gemini_model_setting,
+        shortcut::change_gemini_api_key_setting,
         trigger_update_check,
         commands::cancel_operation,
         commands::get_app_dir_path,

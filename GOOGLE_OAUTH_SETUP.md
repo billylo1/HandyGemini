@@ -41,7 +41,7 @@ This guide will help you set up Google OAuth credentials to enable Gemini AI fea
      - `openid` (OpenID Connect)
      - `https://www.googleapis.com/auth/userinfo.email` (User email address)
      - `https://www.googleapis.com/auth/userinfo.profile` (User profile information)
-   - **Note**: Gemini API doesn't require a specific OAuth scope - it works with any valid Google OAuth access token
+   - **Note**: Gemini API uses API keys (not OAuth) for authentication. See the settings UI to configure your API key.
    - Click **"Update"**, then **"Save and Continue"**
 7. On the **Test users** page (if External):
    - Add your Google account email as a test user

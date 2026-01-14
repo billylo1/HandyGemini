@@ -125,6 +125,12 @@ const settingUpdaters: {
     commands.changeAppendTrailingSpaceSetting(value as boolean),
   log_level: (value) => commands.setLogLevel(value as any),
   app_language: (value) => commands.changeAppLanguageSetting(value as string),
+  gemini_enabled: (value) =>
+    commands.changeGeminiEnabledSetting(value as boolean),
+  gemini_model: (value) =>
+    commands.changeGeminiModelSetting(value as string),
+  gemini_api_key: (value) =>
+    commands.changeGeminiApiKeySetting(value as string),
 };
 
 export const useSettingsStore = create<SettingsStore>()(

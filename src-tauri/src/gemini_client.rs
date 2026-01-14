@@ -1,6 +1,5 @@
-use crate::google_auth;
 use log::debug;
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use base64::{Engine as _, engine::general_purpose};
@@ -74,17 +73,17 @@ fn audio_to_base64_wav(audio: &[f32], sample_rate: u32) -> Result<String, String
 
 /// Send text and optional context (images, audio) to Gemini API for answers
 pub async fn ask_gemini(
-    app: &AppHandle,
+    _app: &AppHandle,
     text: &str,
     model: &str,
+    api_key: &str,
     context_images: Option<Vec<Vec<u8>>>, // Raw image bytes (will be base64 encoded)
     context_audio: Option<Vec<f32>>,      // Optional audio context
     sample_rate: Option<u32>,
 ) -> Result<String, String> {
-    // Get access token
-    let access_token = google_auth::get_valid_access_token(app, None, None)
-        .await
-        .map_err(|e| format!("Failed to get access token: {}", e))?;
+    if api_key.is_empty() {
+        return Err("Gemini API key is not configured".to_string());
+    }
 
     // Build parts for the request
     let mut parts = Vec::new();
@@ -143,18 +142,13 @@ pub async fn ask_gemini(
 
     // Build headers
     let mut headers = HeaderMap::new();
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {}", access_token))
-            .map_err(|e| format!("Invalid authorization header: {}", e))?,
-    );
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-    // Make request
+    // Make request with API key as query parameter (recommended for Gemini API)
     let client = reqwest::Client::new();
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
-        model
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        model, api_key
     );
 
     debug!("Sending request to Gemini API: {} with {} parts", url, parts.len());

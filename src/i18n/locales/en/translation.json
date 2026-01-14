@@ -208,9 +208,19 @@
       }
     },
     "gemini": {
+      "title": "Gemini",
+      "enabled": {
+        "label": "Enable Gemini",
+        "description": "Send transcribed text to Gemini API for answers"
+      },
+      "apiKey": {
+        "label": "API Key",
+        "description": "Your Gemini API key. Get one from https://aistudio.google.com/apikey",
+        "placeholder": "Enter your Gemini API key"
+      },
       "googleLogin": {
         "title": "Google Login",
-        "description": "Sign in with Google to enable Gemini AI features. This allows you to get answers from Gemini using your transcribed text and context.",
+        "description": "Sign in with Google (optional, for user profile only). Gemini API uses API keys for authentication.",
         "login": "Sign in with Google",
         "logout": "Sign out",
         "authenticating": "Authenticating...",

@@ -4,13 +4,15 @@ use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, S
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
+use crate::gemini_client;
 use crate::settings::{get_settings, AppSettings, APPLE_INTELLIGENCE_PROVIDER_ID};
 use crate::shortcut;
 use crate::tray::{change_tray_icon, TrayIconState};
 use crate::utils::{self, show_recording_overlay, show_transcribing_overlay};
+use crate::gemini_popup;
 use crate::ManagedToggleState;
 use ferrous_opencc::{config::BuiltinConfig, OpenCC};
-use log::{debug, error};
+use log::{debug, error, info};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -372,6 +374,41 @@ impl ShortcutAction for TranscribeAction {
                                     error!("Failed to save transcription to history: {}", e);
                                 }
                             });
+
+                            // Send to Gemini if enabled
+                            info!("Gemini setting check: enabled={}, model={}", settings.gemini_enabled, settings.gemini_model);
+                            if settings.gemini_enabled && !settings.gemini_api_key.is_empty() {
+                                info!("Gemini is enabled, sending transcription to Gemini");
+                                let ah_clone = ah.clone();
+                                let transcription_for_gemini = transcription.clone();
+                                let gemini_model = settings.gemini_model.clone();
+                                let gemini_api_key = settings.gemini_api_key.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    info!("Sending transcription to Gemini: {}", transcription_for_gemini);
+                                    match gemini_client::ask_gemini(
+                                        &ah_clone,
+                                        &transcription_for_gemini,
+                                        &gemini_model,
+                                        &gemini_api_key,
+                                        None, // No images for now
+                                        None, // No audio context for now
+                                        None, // No sample rate
+                                    )
+                                    .await
+                                    {
+                                        Ok(gemini_response) => {
+                                            info!("Received Gemini response (length: {} chars)", gemini_response.len());
+                                            // Show Gemini popup with response
+                                            gemini_popup::show_gemini_popup(&ah_clone, gemini_response);
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to get Gemini response: {}", e);
+                                        }
+                                    }
+                                });
+                            } else {
+                                info!("Gemini is disabled, skipping Gemini API call");
+                            }
 
                             // Paste the final text (either processed or original)
                             let ah_clone = ah.clone();

@@ -293,6 +293,12 @@ pub struct AppSettings {
     pub append_trailing_space: bool,
     #[serde(default = "default_app_language")]
     pub app_language: String,
+    #[serde(default = "default_gemini_enabled")]
+    pub gemini_enabled: bool,
+    #[serde(default = "default_gemini_model")]
+    pub gemini_model: String,
+    #[serde(default = "default_gemini_api_key")]
+    pub gemini_api_key: String,
 }
 
 fn default_model() -> String {
@@ -366,6 +372,18 @@ fn default_app_language() -> String {
     tauri_plugin_os::locale()
         .and_then(|l| l.split(['-', '_']).next().map(String::from))
         .unwrap_or_else(|| "en".to_string())
+}
+
+fn default_gemini_enabled() -> bool {
+    false
+}
+
+fn default_gemini_model() -> String {
+    "gemini-1.5-flash".to_string()
+}
+
+fn default_gemini_api_key() -> String {
+    String::new()
 }
 
 fn default_post_process_provider_id() -> String {
@@ -581,6 +599,9 @@ pub fn get_default_settings() -> AppSettings {
         mute_while_recording: false,
         append_trailing_space: false,
         app_language: default_app_language(),
+        gemini_enabled: default_gemini_enabled(),
+        gemini_model: default_gemini_model(),
+        gemini_api_key: default_gemini_api_key(),
     }
 }
 

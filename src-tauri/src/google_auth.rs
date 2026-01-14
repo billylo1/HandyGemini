@@ -8,7 +8,6 @@ use tauri_plugin_store::StoreExt;
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const REDIRECT_PORT: u16 = 8080;
 const REDIRECT_URI: &str = "http://localhost:8080";
 
 // OAuth2 client ID and secret for Gemini API
@@ -129,8 +128,8 @@ pub async fn start_google_oauth_flow(
     );
     store.save().map_err(|e| e.to_string())?;
 
-    // Request scopes for user info (Gemini API doesn't require a specific scope)
-    // The access token from OAuth can be used directly with Gemini API
+    // Request scopes for user info only
+    // Note: Gemini API uses API keys (not OAuth) for authentication
     let scopes = vec![
         Scope::new("openid".to_string()),
         Scope::new("https://www.googleapis.com/auth/userinfo.email".to_string()),
