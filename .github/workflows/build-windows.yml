@@ -41,6 +41,12 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Install Vulkan SDK (Windows x64)
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.309.0
+          cache: true
+
       - name: Install frontend dependencies
         run: bun install
 
