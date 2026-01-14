@@ -1,13 +1,75 @@
 # HandyGemini
 
-A OS-level tool that enables users to get answers quickly from Gemini, together with user selected context (e.g. highlighted text, screenshot, active window image)
+**HandyGemini** is a fork of [Handy](https://github.com/cjpais/Handy) that extends the base speech-to-text application with Google Gemini AI integration. It enables users to get AI-powered answers quickly from Gemini, together with user-selected context (e.g., highlighted text, screenshots, active window images).
 
-Additions to Handy:
-- Add Login to Google to allow authenticated interactions with Gemini
-- Send audio + context directly to Gemini
-- Add Gemini Model selection (flash, pro, thinking)
-- Add multiple hotkey variations to handle the transmission of context (highlighted text, full screen, active window only)
-- Add popup window to display gemini response
+## What's New in HandyGemini
+
+HandyGemini adds comprehensive Gemini AI integration on top of Handy's core speech-to-text functionality:
+
+### 🚀 Core Gemini Features
+
+- **Google OAuth Authentication**: Secure login to Google accounts for authenticated Gemini API access
+- **Direct Audio to Gemini**: Option to send audio directly to Gemini for transcription and AI processing (bypassing local transcription)
+- **Gemini Model Selection**: Choose from multiple Gemini models:
+  - `gemini-3-flash-preview` - Fast, efficient responses
+  - `gemini-1.5-pro` - High-quality, detailed responses
+  - `gemini-1.5-flash` - Balanced speed and quality
+- **Conversation History**: Maintains context across multiple Gemini interactions for more natural conversations
+- **Reset Button**: Clear conversation history to start fresh interactions
+
+### 📸 Context Capture
+
+- **Screenshot Support**: Capture and send screenshots with your questions
+  - **Full Screen Capture**: Capture entire screen (all platforms)
+  - **Active Window Capture**: macOS-specific active window capture (falls back to full screen on other platforms)
+  - **Smart Instructions**: Automatically focuses Gemini on the main canvas area, ignoring UI elements
+- **IP-based Location Context**: Automatically includes user's approximate location (derived from IP) for personalized responses
+
+### 🎨 User Experience Enhancements
+
+- **Gemini Popup Window**: Beautiful popup interface to display Gemini responses with:
+  - Full markdown rendering support
+  - LaTeX math rendering (with proper handling of currency symbols)
+  - Auto-scrolling for long responses
+  - Conversation history display
+- **Status Overlays**: Real-time status updates during Gemini operations:
+  - "Sending to Gemini..." - When audio/context is being sent
+  - "Answer is ready" - When response is received
+  - "No audio detected" - When insufficient audio is captured
+- **Empty Audio Detection**: Prevents sending empty or insufficient audio to Gemini API
+- **Visual Distinction**: Added "G" badge overlay to app icons to distinguish from base Handy
+
+### 🔧 Technical Improvements
+
+- **Robust Error Handling**: Better handling of edge cases and API errors
+- **Platform-Specific Optimizations**: macOS-specific active window capture with fallback mechanisms
+- **Improved State Management**: Consistent UI state management for overlay and transcription flows
+
+## Current Limitations & Missing Features
+
+### ⚠️ Build Status
+
+**Currently Available:**
+- ✅ **macOS (Apple Silicon)**: DMG installer available in [releases](https://github.com/billylo1/HandyGemini/releases)
+- ✅ **macOS Notarization**: Builds are signed and notarized with Developer ID Application certificate
+
+**Not Yet Available:**
+- ❌ **Windows Builds**: Windows installers (MSI/Setup.exe) are not currently built
+- ❌ **Linux Builds**: Linux packages (AppImage/DEB/RPM) are not currently built
+- ❌ **macOS Intel (x86_64)**: Only Apple Silicon builds are currently available
+
+### 🔄 Updater Status
+
+- ⚠️ **Update Checker**: Configured to check for updates from HandyGemini fork
+- ⚠️ **latest.json**: Needs to be generated during build and uploaded to releases for updater to work fully
+
+### 📝 Development Notes
+
+To build for other platforms, you'll need to:
+1. Set up platform-specific build environments (see [BUILD.md](BUILD.md))
+2. Configure platform-specific signing certificates (Windows code signing, Linux GPG)
+3. Run `bun run tauri build` for the target platform
+4. Upload the generated `latest.json` file to releases for updater functionality
 
 ## Google OAuth Setup
 
@@ -62,7 +124,13 @@ The process is entirely local:
 
 ### Installation
 
-1. Download the latest release from the [releases page](https://github.com/cjpais/Handy/releases) or the [website](https://handy.computer)
+**For HandyGemini:**
+1. Download the latest release from the [HandyGemini releases page](https://github.com/billylo1/HandyGemini/releases)
+2. Currently only macOS (Apple Silicon) builds are available
+3. See [Current Limitations](#current-limitations--missing-features) for build status
+
+**For Base Handy (all platforms):**
+1. Download the latest release from the [Handy releases page](https://github.com/cjpais/Handy/releases) or the [website](https://handy.computer)
 2. Install the application following platform-specific instructions
 3. Launch Handy and grant necessary system permissions (microphone, accessibility)
 4. Configure your preferred keyboard shortcuts in Settings
@@ -291,6 +359,13 @@ Final structure should look like:
 
 ### How to Contribute
 
+**For HandyGemini:**
+1. **Check existing issues** at [github.com/billylo1/HandyGemini/issues](https://github.com/billylo1/HandyGemini/issues)
+2. **Fork the repository** and create a feature branch
+3. **Test thoroughly** on your target platform
+4. **Submit a pull request** with clear description of changes
+
+**For Base Handy:**
 1. **Check existing issues** at [github.com/cjpais/Handy/issues](https://github.com/cjpais/Handy/issues)
 2. **Fork the repository** and create a feature branch
 3. **Test thoroughly** on your target platform
@@ -315,6 +390,7 @@ The goal is to create both a useful tool and a foundation for others to build up
 
 ## Related Projects
 
+- **[Handy (Base Project)](https://github.com/cjpais/Handy)** - The original Handy speech-to-text application
 - **[Handy CLI](https://github.com/cjpais/handy-cli)** - The original Python command-line version
 - **[handy.computer](https://handy.computer)** - Project website with demos and documentation
 
