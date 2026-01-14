@@ -2,6 +2,7 @@
 use crate::apple_intelligence;
 use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, SoundType};
 use crate::managers::audio::AudioRecordingManager;
+use crate::managers::gemini_conversation::GeminiConversationManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
 use crate::gemini_client;
@@ -319,6 +320,7 @@ impl ShortcutAction for TranscribeAction {
 
                 let transcription_time = Instant::now();
                 let samples_clone = samples.clone(); // Clone for history saving
+                let samples_for_gemini = samples.clone(); // Clone for potential Gemini audio sending
                 match tm.transcribe(samples) {
                     Ok(transcription) => {
                         debug!(
@@ -361,10 +363,11 @@ impl ShortcutAction for TranscribeAction {
                             // Save to history with post-processed text and prompt
                             let hm_clone = Arc::clone(&hm);
                             let transcription_for_history = transcription.clone();
+                            let samples_for_history = samples_clone.clone();
                             tauri::async_runtime::spawn(async move {
                                 if let Err(e) = hm_clone
                                     .save_transcription(
-                                        samples_clone,
+                                        samples_for_history,
                                         transcription_for_history,
                                         post_processed_text,
                                         post_process_prompt,
@@ -376,37 +379,106 @@ impl ShortcutAction for TranscribeAction {
                             });
 
                             // Send to Gemini if enabled
-                            info!("Gemini setting check: enabled={}, model={}", settings.gemini_enabled, settings.gemini_model);
+                            info!("Gemini setting check: enabled={}, model={}, send_audio={}", settings.gemini_enabled, settings.gemini_model, settings.gemini_send_audio);
                             let gemini_enabled = settings.gemini_enabled && !settings.gemini_api_key.is_empty();
                             if gemini_enabled {
-                                info!("Gemini is enabled, sending transcription to Gemini");
                                 let ah_clone = ah.clone();
-                                let transcription_for_gemini = transcription.clone();
                                 let gemini_model = settings.gemini_model.clone();
                                 let gemini_api_key = settings.gemini_api_key.clone();
-                                tauri::async_runtime::spawn(async move {
-                                    info!("Sending transcription to Gemini: {}", transcription_for_gemini);
-                                    match gemini_client::ask_gemini(
-                                        &ah_clone,
-                                        &transcription_for_gemini,
-                                        &gemini_model,
-                                        &gemini_api_key,
-                                        None, // No images for now
-                                        None, // No audio context for now
-                                        None, // No sample rate
-                                    )
-                                    .await
-                                    {
-                                        Ok(gemini_response) => {
-                                            info!("Received Gemini response (length: {} chars)", gemini_response.len());
-                                            // Show Gemini popup with response
-                                            gemini_popup::show_gemini_popup(&ah_clone, gemini_response);
+                                let send_audio = settings.gemini_send_audio;
+                                
+                                // Get conversation manager and history
+                                let conv_mgr = Arc::clone(&ah.state::<Arc<GeminiConversationManager>>());
+                                let conversation_history: Vec<gemini_client::ConversationMessage> = conv_mgr
+                                    .get_history()
+                                    .into_iter()
+                                    .map(|msg| gemini_client::ConversationMessage {
+                                        role: msg.role.clone(),
+                                        text: msg.text.clone(),
+                                    })
+                                    .collect();
+                                
+                                if send_audio {
+                                    // Send audio directly to Gemini for server-side transcription
+                                    info!("Gemini send_audio enabled, sending audio samples to Gemini");
+                                    let audio_samples = samples_for_gemini.clone();
+                                    let conv_mgr_clone = Arc::clone(&conv_mgr);
+                                    tauri::async_runtime::spawn(async move {
+                                        match gemini_client::ask_gemini(
+                                            &ah_clone,
+                                            "", // Empty text when sending audio
+                                            &gemini_model,
+                                            &gemini_api_key,
+                                            None, // No images for now
+                                            Some(audio_samples), // Send audio samples
+                                            Some(16000), // Sample rate (16kHz, standard for Whisper)
+                                            Some(conversation_history.clone()),
+                                        )
+                                        .await
+                                        {
+                                            Ok(gemini_response_data) => {
+                                                info!("Received Gemini response from audio (answer length: {} chars)", gemini_response_data.answer.len());
+                                                
+                                                // Get transcription (from Gemini or use local as fallback)
+                                                let question_text = gemini_response_data.transcription
+                                                    .as_ref()
+                                                    .map(|t| t.clone())
+                                                    .unwrap_or_else(|| transcription.clone());
+                                                
+                                                // Add to conversation history
+                                                conv_mgr_clone.add_user_message(question_text.clone());
+                                                conv_mgr_clone.add_model_message(gemini_response_data.answer.clone());
+                                                
+                                                // Format response to include Gemini's transcription and answer
+                                                let formatted_response = format!("**Q:** {}\n\n**A:** {}", question_text, gemini_response_data.answer);
+                                                // Show Gemini popup with formatted response
+                                                gemini_popup::show_gemini_popup(&ah_clone, formatted_response);
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to get Gemini response from audio: {}", e);
+                                            }
                                         }
-                                        Err(e) => {
-                                            error!("Failed to get Gemini response: {}", e);
+                                    });
+                                } else {
+                                    // Send transcribed text to Gemini
+                                    info!("Gemini is enabled, sending transcription to Gemini");
+                                    let transcription_for_gemini = transcription.clone();
+                                    let conv_mgr_clone = Arc::clone(&conv_mgr);
+                                    tauri::async_runtime::spawn(async move {
+                                        info!("Sending transcription to Gemini: {}", transcription_for_gemini);
+                                        
+                                        // Add user message to conversation history
+                                        conv_mgr_clone.add_user_message(transcription_for_gemini.clone());
+                                        
+                                        match gemini_client::ask_gemini(
+                                            &ah_clone,
+                                            &transcription_for_gemini,
+                                            &gemini_model,
+                                            &gemini_api_key,
+                                            None, // No images for now
+                                            None, // No audio context for now
+                                            None, // No sample rate
+                                            Some(conversation_history.clone()),
+                                        )
+                                        .await
+                                        {
+                                            Ok(gemini_response_data) => {
+                                                info!("Received Gemini response (answer length: {} chars)", gemini_response_data.answer.len());
+                                                
+                                                // Add model response to conversation history
+                                                conv_mgr_clone.add_model_message(gemini_response_data.answer.clone());
+                                                
+                                                // Format response to include question and answer
+                                                let formatted_response = format!("**Q:** {}\n\n**A:** {}", transcription_for_gemini, gemini_response_data.answer);
+                                                // Show Gemini popup with formatted response
+                                                gemini_popup::show_gemini_popup(&ah_clone, formatted_response);
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to get Gemini response: {}", e);
+                                            }
                                         }
-                                    }
-                                });
+                                    });
+                                }
                             } else {
                                 info!("Gemini is disabled, skipping Gemini API call");
                             }

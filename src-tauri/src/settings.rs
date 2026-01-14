@@ -299,6 +299,8 @@ pub struct AppSettings {
     pub gemini_model: String,
     #[serde(default = "default_gemini_api_key")]
     pub gemini_api_key: String,
+    #[serde(default = "default_gemini_send_audio")]
+    pub gemini_send_audio: bool,
 }
 
 fn default_model() -> String {
@@ -384,6 +386,10 @@ fn default_gemini_model() -> String {
 
 fn default_gemini_api_key() -> String {
     String::new()
+}
+
+fn default_gemini_send_audio() -> bool {
+    true
 }
 
 fn default_post_process_provider_id() -> String {
@@ -602,6 +608,7 @@ pub fn get_default_settings() -> AppSettings {
         gemini_enabled: default_gemini_enabled(),
         gemini_model: default_gemini_model(),
         gemini_api_key: default_gemini_api_key(),
+        gemini_send_audio: default_gemini_send_audio(),
     }
 }
 

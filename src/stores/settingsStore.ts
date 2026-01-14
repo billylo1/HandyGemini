@@ -131,6 +131,8 @@ const settingUpdaters: {
     commands.changeGeminiModelSetting(value as string),
   gemini_api_key: (value) =>
     commands.changeGeminiApiKeySetting(value as string),
+  gemini_send_audio: (value) =>
+    commands.changeGeminiSendAudioSetting(value as boolean),
 };
 
 export const useSettingsStore = create<SettingsStore>()(

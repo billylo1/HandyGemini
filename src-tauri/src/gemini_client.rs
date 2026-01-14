@@ -71,6 +71,20 @@ fn audio_to_base64_wav(audio: &[f32], sample_rate: u32) -> Result<String, String
     Ok(general_purpose::STANDARD.encode(&buffer))
 }
 
+/// Response containing both transcription (if audio was sent) and answer
+#[derive(Debug)]
+pub struct GeminiResponseData {
+    pub transcription: Option<String>,
+    pub answer: String,
+}
+
+/// Conversation message for history
+#[derive(Debug, Clone)]
+pub struct ConversationMessage {
+    pub role: String, // "user" or "model"
+    pub text: String,
+}
+
 /// Send text and optional context (images, audio) to Gemini API for answers
 pub async fn ask_gemini(
     _app: &AppHandle,
@@ -80,7 +94,8 @@ pub async fn ask_gemini(
     context_images: Option<Vec<Vec<u8>>>, // Raw image bytes (will be base64 encoded)
     context_audio: Option<Vec<f32>>,      // Optional audio context
     sample_rate: Option<u32>,
-) -> Result<String, String> {
+    conversation_history: Option<Vec<ConversationMessage>>, // Previous conversation messages
+) -> Result<GeminiResponseData, String> {
     if api_key.is_empty() {
         return Err("Gemini API key is not configured".to_string());
     }
@@ -88,11 +103,18 @@ pub async fn ask_gemini(
     // Build parts for the request
     let mut parts = Vec::new();
 
-    // Add text
-    parts.push(GeminiPart {
-        text: Some(text.to_string()),
-        inline_data: None,
-    });
+    // Add text only if provided (when sending audio, text may be empty)
+    if !text.is_empty() {
+        parts.push(GeminiPart {
+            text: Some(text.to_string()),
+            inline_data: None,
+        });
+    }
+
+    // Ensure we have at least one part (text or audio)
+    if parts.is_empty() && context_audio.is_none() && context_images.is_none() {
+        return Err("At least one of text, audio, or images must be provided".to_string());
+    }
 
     // Add images if provided
     if let Some(images) = context_images {
@@ -116,6 +138,9 @@ pub async fn ask_gemini(
         }
     }
 
+    // Check if we have audio before moving it
+    let has_audio = context_audio.is_some();
+
     // Add audio if provided
     if let Some(audio) = context_audio {
         let sample_rate = sample_rate.unwrap_or(16000);
@@ -129,15 +154,45 @@ pub async fn ask_gemini(
         });
     }
 
-    // Build request
+    // When sending audio without text, add an instruction as a text part
+    if has_audio && text.is_empty() {
+        // Add instruction as a text part to format the response
+        parts.push(GeminiPart {
+            text: Some("Please transcribe the audio first, then provide your response. Format your response as:\n\nTranscription: [the transcribed text]\n\nResponse: [your answer]".to_string()),
+            inline_data: None,
+        });
+    }
+
+    // Build conversation history in Gemini format
+    let mut contents = Vec::new();
+    
+    // Add conversation history if provided
+    if let Some(history) = conversation_history {
+        for msg in history {
+            contents.push(serde_json::json!({
+                "role": msg.role,
+                "parts": [{
+                    "text": msg.text
+                }]
+            }));
+        }
+    }
+    
+    // Add current message
+    contents.push(serde_json::json!({
+        "role": "user",
+        "parts": parts
+    }));
+
     let request_body = serde_json::json!({
-        "contents": [{
-            "parts": parts
-        }],
+        "contents": contents,
         "generationConfig": {
             "temperature": 0.7,
             "maxOutputTokens": 8192
-        }
+        },
+        "tools": [{
+            "googleSearch": {}
+        }]
     });
 
     // Build headers
@@ -178,13 +233,78 @@ pub async fn ask_gemini(
         .await
         .map_err(|e| format!("Failed to parse Gemini response: {}", e))?;
 
-    // Extract text from response
-    let answer = gemini_response
+    debug!("Gemini response structure: candidates={}", gemini_response.candidates.len());
+    
+    // Extract text from response - check all parts
+    let response_text = gemini_response
         .candidates
         .first()
-        .and_then(|c| c.content.parts.first())
-        .and_then(|p| p.text.clone())
-        .ok_or_else(|| "No text in Gemini response".to_string())?;
+        .and_then(|c| {
+            debug!("Candidate has {} parts", c.content.parts.len());
+            // Try to get text from all parts and concatenate
+            let texts: Vec<String> = c.content.parts
+                .iter()
+                .filter_map(|p| {
+                    if let Some(text) = &p.text {
+                        debug!("Found text part: {} chars", text.len());
+                    }
+                    p.text.clone()
+                })
+                .collect();
+            if texts.is_empty() {
+                None
+            } else {
+                Some(texts.join("\n"))
+            }
+        })
+        .ok_or_else(|| {
+            let debug_info = format!("No text in Gemini response. Candidates: {}, Parts in first candidate: {}", 
+                gemini_response.candidates.len(),
+                gemini_response.candidates.first().map(|c| c.content.parts.len()).unwrap_or(0));
+            debug!("{}", debug_info);
+            debug_info
+        })?;
+    
+    debug!("Extracted response text: {} chars, preview: {}", response_text.len(), response_text.chars().take(200).collect::<String>());
 
-    Ok(answer)
+    // If we sent audio, try to extract transcription from the response
+    let (transcription, answer) = if has_audio && text.is_empty() {
+        debug!("Parsing audio response, looking for transcription format");
+        // Try to parse "Transcription: ... Response: ..." format
+        if let Some(transcription_start) = response_text.find("Transcription:") {
+            debug!("Found 'Transcription:' marker at position {}", transcription_start);
+            let transcription_end = response_text[transcription_start..].find("\n\nResponse:").or_else(|| response_text[transcription_start..].find("\nResponse:"));
+            if let Some(end) = transcription_end {
+                let transcription_text = response_text[transcription_start + "Transcription:".len()..transcription_start + end].trim().to_string();
+                let answer_start = transcription_start + end;
+                let answer_text = if response_text[answer_start..].starts_with("\n\nResponse:") {
+                    response_text[answer_start + "\n\nResponse:".len()..].trim().to_string()
+                } else {
+                    response_text[answer_start + "\nResponse:".len()..].trim().to_string()
+                };
+                debug!("Extracted transcription: {} chars, answer: {} chars", transcription_text.len(), answer_text.len());
+                (Some(transcription_text), answer_text)
+            } else {
+                // Fallback: if format doesn't match, assume entire response is the answer
+                debug!("No 'Response:' marker found, using entire response as answer");
+                (None, response_text)
+            }
+        } else {
+            // No transcription marker found, return entire response as answer
+            debug!("No 'Transcription:' marker found, using entire response as answer");
+            (None, response_text)
+        }
+    } else {
+        // No audio sent, no transcription
+        (None, response_text)
+    };
+    
+    if answer.is_empty() {
+        debug!("WARNING: Answer is empty after parsing!");
+    }
+
+    Ok(GeminiResponseData {
+        transcription,
+        answer,
+    })
 }

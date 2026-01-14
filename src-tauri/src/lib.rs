@@ -24,6 +24,7 @@ use tauri_specta::{collect_commands, Builder};
 
 use env_filter::Builder as EnvFilterBuilder;
 use managers::audio::AudioRecordingManager;
+use managers::gemini_conversation::GeminiConversationManager;
 use managers::history::HistoryManager;
 use managers::model::ModelManager;
 use managers::transcription::TranscriptionManager;
@@ -129,12 +130,14 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     );
     let history_manager =
         Arc::new(HistoryManager::new(app_handle).expect("Failed to initialize history manager"));
+    let gemini_conversation_manager = Arc::new(GeminiConversationManager::new());
 
     // Add managers to Tauri's managed state
     app_handle.manage(recording_manager.clone());
     app_handle.manage(model_manager.clone());
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
+    app_handle.manage(gemini_conversation_manager.clone());
 
     // Initialize the shortcuts
     shortcut::init_shortcuts(app_handle);
@@ -299,6 +302,7 @@ pub fn run() {
         shortcut::change_gemini_enabled_setting,
         shortcut::change_gemini_model_setting,
         shortcut::change_gemini_api_key_setting,
+        shortcut::change_gemini_send_audio_setting,
         trigger_update_check,
         commands::cancel_operation,
         commands::get_app_dir_path,

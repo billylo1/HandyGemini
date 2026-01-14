@@ -30,3 +30,4 @@ export { UpdateChecksToggle } from "./UpdateChecksToggle";
 export { GoogleLogin } from "./GoogleLogin";
 export { GeminiToggle } from "./GeminiToggle";
 export { GeminiApiKey } from "./GeminiApiKey";
+export { GeminiSendAudio } from "./GeminiSendAudio";

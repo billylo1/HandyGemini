@@ -1,5 +1,5 @@
 use crate::gemini_client;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 /// Ask Gemini a question with optional context (images, audio)
 #[tauri::command]
@@ -13,7 +13,18 @@ pub async fn ask_gemini(
     context_audio: Option<Vec<f32>>,      // Optional audio context
     sample_rate: Option<u32>,
 ) -> Result<String, String> {
-    gemini_client::ask_gemini(
+    // Get conversation history
+    let conv_mgr = app.state::<std::sync::Arc<crate::managers::gemini_conversation::GeminiConversationManager>>();
+    let conversation_history: Vec<gemini_client::ConversationMessage> = conv_mgr
+        .get_history()
+        .into_iter()
+        .map(|msg| gemini_client::ConversationMessage {
+            role: msg.role,
+            text: msg.text,
+        })
+        .collect();
+    
+    let response = gemini_client::ask_gemini(
         &app,
         &text,
         &model,
@@ -21,6 +32,10 @@ pub async fn ask_gemini(
         context_images,
         context_audio,
         sample_rate,
+        Some(conversation_history),
     )
-    .await
+    .await?;
+    
+    // Return just the answer for backward compatibility with existing code
+    Ok(response.answer)
 }

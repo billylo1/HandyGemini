@@ -23,6 +23,7 @@ import { useSettings } from "../../../hooks/useSettings";
 import { GoogleLogin } from "../GoogleLogin";
 import { GeminiToggle } from "../GeminiToggle";
 import { GeminiApiKey } from "../GeminiApiKey";
+import { GeminiSendAudio } from "../GeminiSendAudio";
 
 const DisabledNotice: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -466,6 +467,7 @@ export const PostProcessingSettings: React.FC = () => {
       <SettingsGroup title={t("settings.gemini.title")}>
         <GeminiToggle descriptionMode="tooltip" grouped={true} />
         <GeminiApiKey descriptionMode="tooltip" grouped={true} />
+        <GeminiSendAudio descriptionMode="tooltip" grouped={true} />
         <GoogleLogin descriptionMode="inline" grouped={true} />
       </SettingsGroup>
     </div>

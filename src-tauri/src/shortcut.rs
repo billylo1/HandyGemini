@@ -402,6 +402,15 @@ pub fn change_gemini_model_setting(app: AppHandle, model: String) -> Result<(), 
 
 #[tauri::command]
 #[specta::specta]
+pub fn change_gemini_send_audio_setting(app: AppHandle, send_audio: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.gemini_send_audio = send_audio;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_post_process_base_url_setting(
     app: AppHandle,
     provider_id: String,
