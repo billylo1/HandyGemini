@@ -385,7 +385,7 @@ fn default_gemini_enabled() -> bool {
 }
 
 fn default_gemini_model() -> String {
-    "gemini-1.5-flash".to_string()
+    "gemini-3-pro".to_string()
 }
 
 fn default_gemini_api_key() -> String {

@@ -31,3 +31,4 @@ export { GoogleLogin } from "./GoogleLogin";
 export { GeminiToggle } from "./GeminiToggle";
 export { GeminiApiKey } from "./GeminiApiKey";
 export { GeminiSendAudio } from "./GeminiSendAudio";
+export { GeminiModelSelector } from "./GeminiModelSelector";

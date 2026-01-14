@@ -218,6 +218,11 @@
         "description": "Your Gemini API key. Get one from https://aistudio.google.com/apikey",
         "placeholder": "Enter your Gemini API key"
       },
+      "model": {
+        "label": "Model",
+        "description": "Select the Gemini model to use for answering questions",
+        "placeholder": "Select a model"
+      },
       "sendAudio": {
         "label": "Send Audio",
         "description": "Send audio directly to Gemini for server-side transcription instead of using local transcription"

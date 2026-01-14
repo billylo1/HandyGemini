@@ -966,26 +966,87 @@ fn handle_shortcut_event(
 }
 
 pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
-    let shortcut = match binding.current_binding.parse::<Shortcut>() {
+    // Helper to normalize shortcut string for platform compatibility
+    // On macOS, "ctrl" should be "control" for tauri-plugin-global-shortcut
+    let normalize = |s: &str| -> String {
+        #[cfg(target_os = "macos")]
+        {
+            s.replace("ctrl+", "control+").replace("+ctrl", "+control")
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            s.to_string()
+        }
+    };
+    
+    // Create both variants: with and without Ctrl (same logic as register_shortcut)
+    let has_ctrl = binding.current_binding.to_lowercase().contains("ctrl") 
+        || binding.current_binding.to_lowercase().contains("control");
+    
+    let shortcut_without_ctrl = if has_ctrl {
+        remove_ctrl_from_shortcut(&binding.current_binding)
+    } else {
+        binding.current_binding.clone()
+    };
+    
+    let shortcut_with_ctrl = if has_ctrl {
+        binding.current_binding.clone()
+    } else {
+        add_ctrl_to_shortcut(&binding.current_binding)
+    };
+    
+    // Normalize both shortcuts
+    let normalized_without_ctrl = normalize(&shortcut_without_ctrl);
+    let normalized_with_ctrl = normalize(&shortcut_with_ctrl);
+    
+    // Parse both shortcuts
+    let shortcut_without_ctrl_parsed = match normalized_without_ctrl.parse::<Shortcut>() {
         Ok(s) => s,
         Err(e) => {
-            let error_msg = format!(
-                "Failed to parse shortcut '{}' for unregistration: {}",
-                binding.current_binding, e
-            );
-            error!("_unregister_shortcut parse error: {}", error_msg);
+            let error_msg = format!("Failed to parse shortcut without Ctrl '{}' for unregistration: {}", normalized_without_ctrl, e);
+            error!("{}", error_msg);
             return Err(error_msg);
         }
     };
-
-    app.global_shortcut().unregister(shortcut).map_err(|e| {
-        let error_msg = format!(
-            "Failed to unregister shortcut '{}': {}",
-            binding.current_binding, e
-        );
-        error!("_unregister_shortcut error: {}", error_msg);
-        error_msg
-    })?;
-
+    
+    let shortcut_with_ctrl_parsed = match normalized_with_ctrl.parse::<Shortcut>() {
+        Ok(s) => s,
+        Err(e) => {
+            let error_msg = format!("Failed to parse shortcut with Ctrl '{}' for unregistration: {}", normalized_with_ctrl, e);
+            error!("{}", error_msg);
+            return Err(error_msg);
+        }
+    };
+    
+    // Unregister both shortcuts (ignore errors if not registered)
+    let mut errors = Vec::new();
+    
+    if app.global_shortcut().is_registered(shortcut_without_ctrl_parsed) {
+        info!("Unregistering shortcut without Ctrl '{}' (normalized: '{}') for binding '{}'", 
+            shortcut_without_ctrl, normalized_without_ctrl, binding.id);
+        if let Err(e) = app.global_shortcut().unregister(shortcut_without_ctrl_parsed) {
+            let error_msg = format!("Failed to unregister shortcut without Ctrl '{}': {}", normalized_without_ctrl, e);
+            warn!("{}", error_msg);
+            errors.push(error_msg);
+        }
+    }
+    
+    if app.global_shortcut().is_registered(shortcut_with_ctrl_parsed) {
+        info!("Unregistering shortcut with Ctrl '{}' (normalized: '{}') for binding '{}'", 
+            shortcut_with_ctrl, normalized_with_ctrl, binding.id);
+        if let Err(e) = app.global_shortcut().unregister(shortcut_with_ctrl_parsed) {
+            let error_msg = format!("Failed to unregister shortcut with Ctrl '{}': {}", normalized_with_ctrl, e);
+            warn!("{}", error_msg);
+            errors.push(error_msg);
+        }
+    }
+    
+    // Return error only if both failed
+    if errors.len() == 2 {
+        let error_msg = format!("Failed to unregister both shortcut variants for '{}': {}", binding.current_binding, errors.join("; "));
+        error!("{}", error_msg);
+        return Err(error_msg);
+    }
+    
     Ok(())
 }
