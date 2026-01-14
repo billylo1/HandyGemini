@@ -35,3 +35,7 @@ recording_*
 .env.local
 .env.*.local
 config.json
+
+# Build script backups
+*.backup
+*.build-backup
