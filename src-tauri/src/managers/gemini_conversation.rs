@@ -41,8 +41,4 @@ impl GeminiConversationManager {
         let mut conv = self.conversation.lock().unwrap();
         conv.clear();
     }
-
-    pub fn len(&self) -> usize {
-        self.conversation.lock().unwrap().len()
-    }
 }

@@ -125,7 +125,8 @@ pub async fn ask_gemini(
     // Build parts for the request
     let mut parts = Vec::new();
     
-    // Track whether location_context has been added to avoid duplication
+    // Track whether location_context has been added to avoid duplication (only matters for
+    // the screenshot+audio case where we may add a second text instruction later).
     let mut location_context_added = false;
 
     // Check if we have images before processing
@@ -193,7 +194,6 @@ pub async fn ask_gemini(
             text: Some(location_context.clone()),
             inline_data: None,
         });
-        location_context_added = true;
     }
 
     // Ensure we have at least one part (text or audio)
@@ -246,7 +246,6 @@ pub async fn ask_gemini(
         // Only add location context if it hasn't been added already (e.g., in screenshot instruction)
         if !location_context.is_empty() && !location_context_added {
             instruction.push_str(&location_context);
-            location_context_added = true;
         }
         parts.push(GeminiPart {
             text: Some(instruction),

@@ -158,7 +158,7 @@ async fn start_oauth_callback_server(
                     <body>
                         <div class="container">
                             <h1>✓ Authentication Successful</h1>
-                            <p>You can close this window and return to Handy.</p>
+                            <p>You can close this window and return to HandyGemini.</p>
                         </div>
                     </body>
                     </html>

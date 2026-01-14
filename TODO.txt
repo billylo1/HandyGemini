@@ -1,0 +1,2 @@
+- test on Windows and Linux.
+- add support for Active Window on Windows and Linux
