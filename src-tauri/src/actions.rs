@@ -492,6 +492,10 @@ impl ShortcutAction for TranscribeAction {
                                             Ok(gemini_response_data) => {
                                                 info!("Received Gemini response from audio (answer length: {} chars)", gemini_response_data.answer.len());
                                                 
+                                                // Hide overlay and update tray icon when response is received
+                                                utils::hide_recording_overlay(&ah_clone);
+                                                change_tray_icon(&ah_clone, TrayIconState::Idle);
+                                                
                                                 // Get transcription (from Gemini or use local as fallback)
                                                 let question_text = gemini_response_data.transcription
                                                     .as_ref()
@@ -509,6 +513,9 @@ impl ShortcutAction for TranscribeAction {
                                             }
                                             Err(e) => {
                                                 error!("Failed to get Gemini response from audio: {}", e);
+                                                // Hide overlay and update tray icon on error too
+                                                utils::hide_recording_overlay(&ah_clone);
+                                                change_tray_icon(&ah_clone, TrayIconState::Idle);
                                             }
                                         }
                                     });
@@ -542,6 +549,10 @@ impl ShortcutAction for TranscribeAction {
                                             Ok(gemini_response_data) => {
                                                 info!("Received Gemini response (answer length: {} chars)", gemini_response_data.answer.len());
                                                 
+                                                // Hide overlay and update tray icon when response is received
+                                                utils::hide_recording_overlay(&ah_clone);
+                                                change_tray_icon(&ah_clone, TrayIconState::Idle);
+                                                
                                                 // Add model response to conversation history
                                                 conv_mgr_clone.add_model_message(gemini_response_data.answer.clone());
                                                 
@@ -552,6 +563,9 @@ impl ShortcutAction for TranscribeAction {
                                             }
                                             Err(e) => {
                                                 error!("Failed to get Gemini response: {}", e);
+                                                // Hide overlay and update tray icon on error too
+                                                utils::hide_recording_overlay(&ah_clone);
+                                                change_tray_icon(&ah_clone, TrayIconState::Idle);
                                             }
                                         }
                                     });
@@ -582,10 +596,9 @@ impl ShortcutAction for TranscribeAction {
                                     change_tray_icon(&ah, TrayIconState::Idle);
                                 });
                             } else {
-                                info!("Gemini is enabled, skipping paste - only showing Gemini response");
-                                // Still hide overlay and update tray icon
-                                utils::hide_recording_overlay(&ah);
-                                change_tray_icon(&ah, TrayIconState::Idle);
+                                info!("Gemini is enabled, skipping paste - overlay and tray icon will be hidden when Gemini response is received");
+                                // Don't hide overlay/tray icon here - they will be hidden in the async task callbacks
+                                // when the Gemini response is received (or on error)
                             }
                         } else {
                             utils::hide_recording_overlay(&ah);
