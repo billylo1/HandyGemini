@@ -75,7 +75,7 @@ export const GoogleLogin: React.FC<{
     try {
       setAuthenticating(true);
       setError(null);
-      const result = await commands.startGoogleOauth();
+      const result = await commands.startGoogleOauth(null, null);
       if (result.status === "error") {
         setError(result.error);
         setAuthenticating(false);

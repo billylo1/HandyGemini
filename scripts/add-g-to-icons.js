@@ -125,8 +125,54 @@ async function processIcons() {
     }
   }
 
+  // Regenerate .icns file for macOS
+  console.log('\nRegenerating macOS .icns file...');
+  try {
+    const { execSync } = await import('child_process');
+    const path = await import('path');
+    const fs = await import('fs');
+    const iconsDir = path.join(__dirname, '../src-tauri/icons');
+    const iconsetDir = path.join(iconsDir, 'HandyGemini.iconset');
+    
+    // Create iconset directory
+    if (!fs.existsSync(iconsetDir)) {
+      fs.mkdirSync(iconsetDir, { recursive: true });
+    }
+    
+    // Generate all required icon sizes
+    const sizes = [
+      { name: 'icon_16x16.png', size: 16 },
+      { name: 'icon_16x16@2x.png', size: 32 },
+      { name: 'icon_32x32.png', size: 32 },
+      { name: 'icon_32x32@2x.png', size: 64 },
+      { name: 'icon_128x128.png', size: 128 },
+      { name: 'icon_128x128@2x.png', size: 256 },
+      { name: 'icon_256x256.png', size: 256 },
+      { name: 'icon_256x256@2x.png', size: 512 },
+      { name: 'icon_512x512.png', size: 512 },
+      { name: 'icon_512x512@2x.png', size: 1024 },
+    ];
+    
+    const iconPath = path.join(iconsDir, 'icon.png');
+    for (const { name, size } of sizes) {
+      execSync(`sips -z ${size} ${size} "${iconPath}" --out "${path.join(iconsetDir, name)}"`, { stdio: 'ignore' });
+    }
+    
+    // Convert iconset to .icns
+    execSync(`iconutil -c icns "${iconsetDir}" -o "${path.join(iconsDir, 'icon.icns')}"`, { stdio: 'ignore' });
+    
+    // Clean up iconset directory
+    fs.rmSync(iconsetDir, { recursive: true, force: true });
+    
+    console.log('✓ macOS .icns file regenerated');
+  } catch (error) {
+    console.warn('⚠ Failed to regenerate .icns file:', error.message);
+    console.warn('   You may need to regenerate it manually using:');
+    console.warn('   iconutil -c icns HandyGemini.iconset -o icon.icns');
+  }
+
   console.log('\n✓ Icon processing complete!');
-  console.log('Note: You may need to regenerate .icns and .ico files for macOS/Windows.');
+  console.log('Note: You may need to regenerate .ico files for Windows manually.');
 }
 
 processIcons().catch(console.error);
