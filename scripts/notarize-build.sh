@@ -36,6 +36,42 @@ if [ -z "$APPLE_TEAM_ID" ]; then
     exit 1
 fi
 
+# Update signing identity in tauri.conf.json to match the team ID
+CONFIG_FILE="src-tauri/tauri.conf.json"
+BACKUP_CONFIG="${CONFIG_FILE}.build-backup"
+
+# Create backup of original config
+if [ ! -f "$BACKUP_CONFIG" ]; then
+    cp "$CONFIG_FILE" "$BACKUP_CONFIG"
+fi
+
+# Find Developer ID certificate matching the team ID
+echo "Finding Developer ID Application certificate for team $APPLE_TEAM_ID..."
+DEVELOPER_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | grep "$APPLE_TEAM_ID" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+
+if [ -z "$DEVELOPER_ID" ]; then
+    # Fallback: find any Developer ID Application certificate
+    echo "Warning: No certificate found for team $APPLE_TEAM_ID, trying to find any Developer ID Application certificate..."
+    DEVELOPER_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+fi
+
+if [ -n "$DEVELOPER_ID" ]; then
+    # Update tauri.conf.json with the found certificate
+    if command -v jq &> /dev/null; then
+        jq '.bundle.macOS.signingIdentity = "'"$DEVELOPER_ID"'"' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+        echo "Updated signingIdentity in tauri.conf.json: $DEVELOPER_ID"
+    else
+        # Fallback to sed
+        sed -i '' "s|\"signingIdentity\": \".*\"|\"signingIdentity\": \"$DEVELOPER_ID\"|g" "$CONFIG_FILE"
+        echo "Updated signingIdentity in tauri.conf.json using sed: $DEVELOPER_ID"
+    fi
+else
+    echo "Error: No Developer ID Application certificate found in keychain."
+    echo "Please install a Developer ID Application certificate or run: ./scripts/setup-developer-id.sh"
+    exit 1
+fi
+echo ""
+
 # Check if app-specific password is set
 if [ -z "$APPLE_PASSWORD" ]; then
     echo "Error: APPLE_PASSWORD environment variable is not set"
@@ -62,3 +98,9 @@ bun run tauri build
 
 echo ""
 echo "Build complete! Check the output above for notarization status."
+
+# Restore original config if backup exists
+if [ -f "$BACKUP_CONFIG" ]; then
+    mv "$BACKUP_CONFIG" "$CONFIG_FILE"
+    echo "Restored original tauri.conf.json"
+fi

@@ -56,7 +56,7 @@
       "files": {},
       "hardenedRuntime": true,
       "minimumSystemVersion": "10.13",
-      "signingIdentity": "Developer ID Application: Evergreen Labs (X5J5T5UT6J)",
+      "signingIdentity": "-",
       "entitlements": "Entitlements.plist"
     },
     "linux": {
