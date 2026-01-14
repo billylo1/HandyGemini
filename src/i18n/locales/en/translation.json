@@ -443,6 +443,22 @@
     "no": "No",
     "noOptionsFound": "No options found"
   },
+  "geminiPopup": {
+    "title": "Gemini Response",
+    "reset": {
+      "button": "Reset",
+      "title": "Clear conversation history"
+    },
+    "loading": {
+      "waiting": "Waiting for response...",
+      "noResponse": "No response received",
+      "pressHold": {
+        "prefix": "Press and hold",
+        "suffix": "to record your question..."
+      }
+    },
+    "errorPrefix": "Error:"
+  },
   "accessibility": {
     "permissionsRequired": "Accessibility Permissions Required",
     "permissionsDescription": "Handy needs accessibility permissions to type transcribed text.",

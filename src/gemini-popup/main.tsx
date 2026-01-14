@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ReactDOM from "react-dom/client";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -10,9 +11,11 @@ import rehypeKatex from "rehype-katex";
 import { commands } from "../bindings";
 import { formatKeyCombination } from "../lib/utils/keyboard";
 import { type } from "@tauri-apps/plugin-os";
+import "../i18n";
 import "katex/dist/katex.min.css";
 
 const GeminiPopup: React.FC = () => {
+  const { t } = useTranslation();
   const [responses, setResponses] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -204,23 +207,43 @@ const GeminiPopup: React.FC = () => {
   return (
     <div className="container">
       <div className="header">
-        <div className="title">Gemini Response</div>
+        <div className="title">{t("geminiPopup.title")}</div>
         <div className="header-actions">
-          <button className="reset-btn" id="resetBtn" title="Clear conversation history">Reset</button>
-          <button className="close-btn" id="closeBtn" title="Close">×</button>
+          <button
+            className="reset-btn"
+            id="resetBtn"
+            title={t("geminiPopup.reset.title")}
+          >
+            {t("geminiPopup.reset.button")}
+          </button>
+          <button
+            className="close-btn"
+            id="closeBtn"
+            title={t("common.close")}
+          >
+            ×
+          </button>
         </div>
       </div>
       <div className="response-content">
         {loading && responses.length === 0 && (
           <div className="loading">
             {hotkey ? (
-              <>Press and hold <strong>{hotkey}</strong> to record your question...</>
+              <>
+                {t("geminiPopup.loading.pressHold.prefix")}{" "}
+                <strong>{hotkey}</strong>{" "}
+                {t("geminiPopup.loading.pressHold.suffix")}
+              </>
             ) : (
-              "Waiting for response..."
+              t("geminiPopup.loading.waiting")
             )}
           </div>
         )}
-        {error && <div className="error">Error: {error}</div>}
+        {error && (
+          <div className="error">
+            {t("geminiPopup.errorPrefix")} {error}
+          </div>
+        )}
         {responses.length > 0 && (
           <div className="markdown-content" style={{ display: "block", visibility: "visible", opacity: 1 }}>
             {responses.map((response, index) => (
@@ -269,7 +292,7 @@ const GeminiPopup: React.FC = () => {
           </div>
         )}
         {!loading && responses.length === 0 && !error && (
-          <div className="loading">No response received</div>
+          <div className="loading">{t("geminiPopup.loading.noResponse")}</div>
         )}
       </div>
     </div>
