@@ -1,0 +1,169 @@
+name: "Build Linux"
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_type:
+        description: 'Bundle type (deb, appimage, rpm, or all)'
+        required: false
+        type: choice
+        options:
+          - all
+          - deb
+          - appimage
+          - rpm
+        default: 'all'
+      upload_to_release:
+        description: 'Upload to release (requires release-id)'
+        required: false
+        type: boolean
+        default: false
+      release_id:
+        description: 'Release ID (if uploading to release)'
+        required: false
+        type: string
+
+jobs:
+  build-linux-deb:
+    if: ${{ inputs.bundle_type == 'all' || inputs.bundle_type == 'deb' }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version from tauri.conf.json
+        id: get-version
+        shell: bash
+        run: |
+          VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+          echo "Application version from tauri.conf.json: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y libasound2-dev pkg-config libssl-dev libvulkan-dev vulkan-tools glslc \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf cmake
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Build frontend
+        run: bun run build
+
+      - name: Build Tauri app (DEB)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WHISPER_NO_AVX: ON
+          WHISPER_NO_AVX2: ON
+        with:
+          tagName: v${{ steps.get-version.outputs.version }}
+          releaseName: HandyGemini v${{ steps.get-version.outputs.version }} (Linux DEB)
+          releaseId: ${{ inputs.release_id }}
+          args: --target x86_64-unknown-linux-gnu --bundles deb
+          releaseDraft: false
+          prerelease: false
+
+      - name: Upload DEB artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: HandyGemini-Linux-DEB-${{ steps.get-version.outputs.version }}
+          path: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+          retention-days: 30
+
+      - name: Upload to release (if requested)
+        if: inputs.upload_to_release && inputs.release_id != ''
+        uses: softprops/action-gh-release@v1
+        with:
+          release_id: ${{ inputs.release_id }}
+          files: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux-appimage-rpm:
+    if: ${{ inputs.bundle_type == 'all' || inputs.bundle_type == 'appimage' || inputs.bundle_type == 'rpm' }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version from tauri.conf.json
+        id: get-version
+        shell: bash
+        run: |
+          VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+          echo "Application version from tauri.conf.json: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y libasound2-dev pkg-config libssl-dev libvulkan-dev vulkan-tools glslc \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf cmake
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Build frontend
+        run: bun run build
+
+      - name: Build Tauri app (AppImage and RPM)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WHISPER_NO_AVX: ON
+          WHISPER_NO_AVX2: ON
+        with:
+          tagName: v${{ steps.get-version.outputs.version }}
+          releaseName: HandyGemini v${{ steps.get-version.outputs.version }} (Linux AppImage/RPM)
+          releaseId: ${{ inputs.release_id }}
+          args: --target x86_64-unknown-linux-gnu --bundles appimage,rpm
+          releaseDraft: false
+          prerelease: false
+
+      - name: Upload AppImage and RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: HandyGemini-Linux-AppImage-RPM-${{ steps.get-version.outputs.version }}
+          path: |
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
+          retention-days: 30
+
+      - name: Upload to release (if requested)
+        if: inputs.upload_to_release && inputs.release_id != ''
+        uses: softprops/action-gh-release@v1
+        with:
+          release_id: ${{ inputs.release_id }}
+          files: |
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
