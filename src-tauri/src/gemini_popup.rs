@@ -68,13 +68,19 @@ fn is_mouse_within_monitor(
 
 fn calculate_popup_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
     if let Some(monitor) = get_monitor_with_cursor(app_handle) {
-        let monitor_size = monitor.size();
-        let monitor_pos = monitor.position();
+        let work_area = monitor.work_area();
+        let scale = monitor.scale_factor();
+        
+        // Convert physical coordinates to logical coordinates
+        let work_area_width = work_area.size.width as f64 / scale;
+        let work_area_height = work_area.size.height as f64 / scale;
+        let work_area_x = work_area.position.x as f64 / scale;
+        let work_area_y = work_area.position.y as f64 / scale;
 
         // Position popup in bottom right corner with some padding
         let padding = 20.0;
-        let x = monitor_pos.x as f64 + monitor_size.width as f64 - POPUP_WIDTH - padding;
-        let y = monitor_pos.y as f64 + monitor_size.height as f64 - POPUP_HEIGHT - padding;
+        let x = work_area_x + work_area_width - POPUP_WIDTH - padding;
+        let y = work_area_y + work_area_height - POPUP_HEIGHT - padding;
 
         Some((x, y))
     } else {
@@ -105,11 +111,13 @@ pub fn create_gemini_popup(app_handle: &AppHandle) {
         .always_on_top(true)
         .skip_taskbar(false)
         .transparent(false)
-        .focused(true)
+        .focused(false)
         .visible(false)
         .build()
         {
-            Ok(_window) => {
+            Ok(window) => {
+                // Explicitly hide the window to ensure it's not visible
+                let _ = window.hide();
                 log::info!("Gemini popup window created successfully (hidden)");
             }
             Err(e) => {
@@ -159,6 +167,11 @@ pub fn create_gemini_popup(app_handle: &AppHandle) {
 pub fn show_gemini_popup(app_handle: &AppHandle, response: String) {
     log::info!("Showing Gemini popup with response (length: {} chars)", response.len());
     
+    // Ensure main window stays hidden
+    if let Some(main_window) = app_handle.get_webview_window("main") {
+        let _ = main_window.hide();
+    }
+    
     if let Some(popup_window) = app_handle.get_webview_window("gemini_popup") {
         log::info!("Gemini popup window found, showing it");
         // Update position before showing
@@ -169,24 +182,36 @@ pub fn show_gemini_popup(app_handle: &AppHandle, response: String) {
 
         let _ = popup_window.show();
         let _ = popup_window.set_focus();
+        let _ = popup_window.set_always_on_top(true);
 
         // Use eval to directly set the response in the window's React state
-        // This bypasses the event system which seems to have timing issues
-        let response_for_eval = response.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r");
+        // Escape the response properly for JavaScript string literal
+        let response_escaped = response
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t");
+        
         let js_code = format!(
             r#"
             (function() {{
-                if (window.__geminiResponseHandler) {{
-                    window.__geminiResponseHandler("{}");
-                }} else {{
-                    // Store for when handler is ready
-                    window.__pendingGeminiResponse = "{}";
-                    // Also try to dispatch a custom event
-                    window.dispatchEvent(new CustomEvent('gemini-response', {{ detail: "{}" }}));
+                try {{
+                    const response = "{}";
+                    if (window.__geminiResponseHandler) {{
+                        window.__geminiResponseHandler(response);
+                    }} else {{
+                        // Store for when handler is ready
+                        window.__pendingGeminiResponse = response;
+                        // Also try to dispatch a custom event
+                        window.dispatchEvent(new CustomEvent('gemini-response', {{ detail: response }}));
+                    }}
+                }} catch (e) {{
+                    console.error('Failed to set Gemini response:', e);
                 }}
             }})();
             "#,
-            response_for_eval, response_for_eval, response_for_eval
+            response_escaped
         );
         
         if let Err(e) = popup_window.eval(&js_code) {
@@ -195,21 +220,41 @@ pub fn show_gemini_popup(app_handle: &AppHandle, response: String) {
             log::info!("Successfully evaluated response into window ({} chars)", response.len());
         }
         
-        // Also emit via Tauri events as fallback
+        // Re-assert visibility and focus after a short delay to ensure window stays visible
+        let window_label = popup_window.label().to_string();
+        let app_handle_clone = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            // Ensure main window stays hidden
+            if let Some(main_window) = app_handle_clone.get_webview_window("main") {
+                let _ = main_window.hide();
+            }
+            if let Some(window) = app_handle_clone.get_webview_window(&window_label) {
+                let _ = window.show();
+                let _ = window.set_focus();
+                let _ = window.set_always_on_top(true);
+                log::info!("Re-asserted window visibility and focus");
+            }
+        });
+        
+        // Also emit via Tauri events as fallback (only once, not multiple times)
         let response_clone = response.clone();
         let window_label = popup_window.label().to_string();
         let app_handle_clone = app_handle.clone();
         
         tauri::async_runtime::spawn(async move {
-            for delay_ms in [100, 300, 500, 1000] {
-                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
-                if let Some(window) = app_handle_clone.get_webview_window(&window_label) {
-                    let _ = window.emit("show-response", response_clone.clone());
-                }
+            // Only emit once after a delay to ensure React is ready
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            if let Some(window) = app_handle_clone.get_webview_window(&window_label) {
+                let _ = window.emit("show-response", response_clone);
             }
         });
     } else {
         log::warn!("Gemini popup window not found, creating it...");
+        // Ensure main window stays hidden
+        if let Some(main_window) = app_handle.get_webview_window("main") {
+            let _ = main_window.hide();
+        }
         create_gemini_popup(app_handle);
         // Try again after a short delay
         std::thread::sleep(std::time::Duration::from_millis(200));
@@ -221,6 +266,7 @@ pub fn show_gemini_popup(app_handle: &AppHandle, response: String) {
             }
             let _ = popup_window.show();
             let _ = popup_window.set_focus();
+            let _ = popup_window.set_always_on_top(true);
             
             // Wait for window to be ready, then emit event multiple times
             let response_clone = response.clone();
@@ -228,6 +274,8 @@ pub fn show_gemini_popup(app_handle: &AppHandle, response: String) {
             let app_handle_clone = app_handle.clone();
             
             // Emit after delays to ensure React is mounted
+            let window_label_for_focus = popup_window.label().to_string();
+            let app_handle_for_focus = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 // Try multiple times with increasing delays
                 for delay_ms in [200, 500, 1000, 1500] {
@@ -240,6 +288,22 @@ pub fn show_gemini_popup(app_handle: &AppHandle, response: String) {
                             log::info!("Successfully emitted show-response event after {}ms (after create) ({} chars)", delay_ms, response_clone.len());
                         }
                     }
+                }
+            });
+            
+            // Re-assert visibility and focus after response is set
+            let app_handle_for_main = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                // Ensure main window stays hidden
+                if let Some(main_window) = app_handle_for_main.get_webview_window("main") {
+                    let _ = main_window.hide();
+                }
+                if let Some(window) = app_handle_for_focus.get_webview_window(&window_label_for_focus) {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    let _ = window.set_always_on_top(true);
+                    log::info!("Re-asserted window visibility and focus (after create)");
                 }
             });
         } else {

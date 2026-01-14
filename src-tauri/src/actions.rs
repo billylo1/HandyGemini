@@ -377,7 +377,8 @@ impl ShortcutAction for TranscribeAction {
 
                             // Send to Gemini if enabled
                             info!("Gemini setting check: enabled={}, model={}", settings.gemini_enabled, settings.gemini_model);
-                            if settings.gemini_enabled && !settings.gemini_api_key.is_empty() {
+                            let gemini_enabled = settings.gemini_enabled && !settings.gemini_api_key.is_empty();
+                            if gemini_enabled {
                                 info!("Gemini is enabled, sending transcription to Gemini");
                                 let ah_clone = ah.clone();
                                 let transcription_for_gemini = transcription.clone();
@@ -410,26 +411,33 @@ impl ShortcutAction for TranscribeAction {
                                 info!("Gemini is disabled, skipping Gemini API call");
                             }
 
-                            // Paste the final text (either processed or original)
-                            let ah_clone = ah.clone();
-                            let paste_time = Instant::now();
-                            ah.run_on_main_thread(move || {
-                                match utils::paste(final_text, ah_clone.clone()) {
-                                    Ok(()) => debug!(
-                                        "Text pasted successfully in {:?}",
-                                        paste_time.elapsed()
-                                    ),
-                                    Err(e) => error!("Failed to paste transcription: {}", e),
-                                }
-                                // Hide the overlay after transcription is complete
-                                utils::hide_recording_overlay(&ah_clone);
-                                change_tray_icon(&ah_clone, TrayIconState::Idle);
-                            })
-                            .unwrap_or_else(|e| {
-                                error!("Failed to run paste on main thread: {:?}", e);
+                            // Paste the final text (either processed or original) - skip if Gemini is enabled
+                            if !gemini_enabled {
+                                let ah_clone = ah.clone();
+                                let paste_time = Instant::now();
+                                ah.run_on_main_thread(move || {
+                                    match utils::paste(final_text, ah_clone.clone()) {
+                                        Ok(()) => debug!(
+                                            "Text pasted successfully in {:?}",
+                                            paste_time.elapsed()
+                                        ),
+                                        Err(e) => error!("Failed to paste transcription: {}", e),
+                                    }
+                                    // Hide the overlay after transcription is complete
+                                    utils::hide_recording_overlay(&ah_clone);
+                                    change_tray_icon(&ah_clone, TrayIconState::Idle);
+                                })
+                                .unwrap_or_else(|e| {
+                                    error!("Failed to run paste on main thread: {:?}", e);
+                                    utils::hide_recording_overlay(&ah);
+                                    change_tray_icon(&ah, TrayIconState::Idle);
+                                });
+                            } else {
+                                info!("Gemini is enabled, skipping paste - only showing Gemini response");
+                                // Still hide overlay and update tray icon
                                 utils::hide_recording_overlay(&ah);
                                 change_tray_icon(&ah, TrayIconState::Idle);
-                            });
+                            }
                         } else {
                             utils::hide_recording_overlay(&ah);
                             change_tray_icon(&ah, TrayIconState::Idle);

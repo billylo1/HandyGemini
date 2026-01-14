@@ -1,27 +1,79 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ReactDOM from "react-dom/client";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { commands } from "../bindings";
+import { formatKeyCombination } from "../lib/utils/keyboard";
+import { type } from "@tauri-apps/plugin-os";
 
 const GeminiPopup: React.FC = () => {
-  const [response, setResponse] = useState<string>("");
+  const [responses, setResponses] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [hotkey, setHotkey] = useState<string>("");
+  const responseRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const lastResponseRef = useRef<string>("");
 
   useEffect(() => {
     console.log("GeminiPopup component mounted, setting up listeners...");
     
-    // Set up handler for direct eval calls
-    const handleDirectResponse = (responseText: string) => {
-      console.log("Received direct response via eval, length:", responseText.length);
-      setResponse(responseText);
-      setLoading(false);
-      setError(null);
+    // Fetch hotkey setting
+    const fetchHotkey = async () => {
+      try {
+        const osType = await type();
+        const normalizedOsType = osType === "macos" ? "macos" : osType === "windows" ? "windows" : osType === "linux" ? "linux" : "unknown";
+        
+        const settingsResult = await commands.getAppSettings();
+        if (settingsResult.status === "ok") {
+          const bindings = settingsResult.data.bindings || {};
+          const transcribeBinding = bindings.transcribe;
+          if (transcribeBinding?.current_binding) {
+            const formatted = formatKeyCombination(transcribeBinding.current_binding, normalizedOsType);
+            setHotkey(formatted);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch hotkey:", err);
+      }
     };
     
-    // Register global handler
+    fetchHotkey();
+    
+    // Set up handler for direct eval calls - always set it up fresh
+    const handleDirectResponse = (responseText: string) => {
+      console.log("Received direct response via eval, length:", responseText?.length || 0, "text:", responseText?.substring(0, 50) || "empty");
+      console.log("Full response:", responseText);
+      if (responseText && typeof responseText === 'string' && responseText.length > 0) {
+        // Deduplicate: check if this response was already added
+        setResponses(prev => {
+          // Check if this exact response already exists in the array
+          if (prev.includes(responseText)) {
+            console.log("Skipping duplicate response (already in array)");
+            return prev;
+          }
+          // Also check against the last response ref to catch rapid duplicates
+          if (responseText === lastResponseRef.current) {
+            console.log("Skipping duplicate response (same as last)");
+            return prev;
+          }
+          lastResponseRef.current = responseText;
+          console.log("Appending response to list, length:", responseText.length);
+          return [...prev, responseText];
+        });
+        setLoading(false);
+        setError(null);
+        console.log("State updated - response appended, loading false");
+      } else {
+        console.warn("Invalid response text received:", responseText, "type:", typeof responseText);
+      }
+    };
+    
+    // Register global handler - always update it
     (window as any).__geminiResponseHandler = handleDirectResponse;
+    console.log("Registered __geminiResponseHandler");
     
     // Check for pending response
     if ((window as any).__pendingGeminiResponse) {
@@ -32,8 +84,8 @@ const GeminiPopup: React.FC = () => {
     
     // Also listen for custom DOM event
     const handleCustomEvent = (event: CustomEvent) => {
-      console.log("Received custom gemini-response event, length:", event.detail?.length || 0);
-      if (event.detail) {
+      console.log("Received custom gemini-response event, detail:", event.detail);
+      if (event.detail && typeof event.detail === 'string' && event.detail.length > 0) {
         handleDirectResponse(event.detail);
       }
     };
@@ -55,7 +107,7 @@ const GeminiPopup: React.FC = () => {
         console.log("Received gemini-error event:", event.payload);
         setError(event.payload);
         setLoading(false);
-        setResponse("");
+        // Don't clear responses on error, just show the error
       });
 
       console.log("Event listeners set up successfully");
@@ -65,7 +117,7 @@ const GeminiPopup: React.FC = () => {
         unlistenResponse();
         unlistenError();
         window.removeEventListener("gemini-response", handleCustomEvent as EventListener);
-        delete (window as any).__geminiResponseHandler;
+        // Don't delete the handler on cleanup - it might be needed for subsequent responses
       };
     };
 
@@ -101,6 +153,27 @@ const GeminiPopup: React.FC = () => {
     };
   }, []);
 
+  // Auto-scroll to new response when it's added
+  useEffect(() => {
+    if (responses.length > 0) {
+      const newIndex = responses.length - 1;
+      // Use a small delay to ensure the DOM has updated
+      const timeoutId = setTimeout(() => {
+        const responseElement = responseRefs.current[newIndex];
+        if (responseElement) {
+          responseElement.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 150);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [responses.length]);
+
+  // Debug: log render state
+  if (responses.length > 0) {
+    console.log("Render - loading:", loading, "responses count:", responses.length, "error:", error);
+  }
+  
   return (
     <div className="container">
       <div className="header">
@@ -108,20 +181,53 @@ const GeminiPopup: React.FC = () => {
         <button className="close-btn" id="closeBtn">×</button>
       </div>
       <div className="response-content">
-        {loading && !response && <div className="loading">Waiting for response...</div>}
+        {loading && responses.length === 0 && (
+          <div className="loading">
+            {hotkey ? (
+              <>Press and hold <strong>{hotkey}</strong> to record your question...</>
+            ) : (
+              "Waiting for response..."
+            )}
+          </div>
+        )}
         {error && <div className="error">Error: {error}</div>}
-        {response && <div style={{ whiteSpace: "pre-wrap", wordWrap: "break-word" }}>{response}</div>}
+        {responses.length > 0 && (
+          <div className="markdown-content" style={{ display: "block", visibility: "visible", opacity: 1 }}>
+            {responses.map((response, index) => (
+              <div 
+                key={index} 
+                ref={(el) => {
+                  responseRefs.current[index] = el;
+                }}
+                style={{ marginBottom: index < responses.length - 1 ? "24px" : "0" }}
+              >
+                {index > 0 && <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid #e0e0e0" }} />}
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                >
+                  {response}
+                </ReactMarkdown>
+              </div>
+            ))}
+          </div>
+        )}
+        {!loading && responses.length === 0 && !error && (
+          <div className="loading">No response received</div>
+        )}
       </div>
     </div>
   );
 };
 
+// Prevent multiple root creation - use a module-level variable
+let root: ReturnType<typeof ReactDOM.createRoot> | null = null;
+
 const rootElement = document.getElementById("root");
 if (rootElement) {
-  const root = ReactDOM.createRoot(rootElement);
-  root.render(
-    <React.StrictMode>
-      <GeminiPopup />
-    </React.StrictMode>
-  );
+  // Check if root already exists, if not create it
+  if (!root) {
+    root = ReactDOM.createRoot(rootElement);
+  }
+  // Render the component (this is safe to call multiple times)
+  root.render(<GeminiPopup />);
 }
