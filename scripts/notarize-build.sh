@@ -23,14 +23,23 @@ if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 fi
 
-# Set defaults if not in .env
-export APPLE_ID="${APPLE_ID:-billy@evergreen-labs.org}"
-export APPLE_TEAM_ID="${APPLE_TEAM_ID:-X5J5T5UT6J}"
+# Check if required environment variables are set
+if [ -z "$APPLE_ID" ]; then
+    echo "Error: APPLE_ID environment variable is not set"
+    echo "Please set it in your .env file or with: export APPLE_ID='your-email@example.com'"
+    exit 1
+fi
+
+if [ -z "$APPLE_TEAM_ID" ]; then
+    echo "Error: APPLE_TEAM_ID environment variable is not set"
+    echo "Please set it in your .env file or with: export APPLE_TEAM_ID='YOUR_TEAM_ID'"
+    exit 1
+fi
 
 # Check if app-specific password is set
 if [ -z "$APPLE_PASSWORD" ]; then
     echo "Error: APPLE_PASSWORD environment variable is not set"
-    echo "Please set it with: export APPLE_PASSWORD='your-app-specific-password'"
+    echo "Please set it in your .env file or with: export APPLE_PASSWORD='your-app-specific-password'"
     echo ""
     echo "To create an app-specific password:"
     echo "1. Go to https://appleid.apple.com"
