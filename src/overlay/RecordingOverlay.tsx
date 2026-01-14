@@ -10,7 +10,7 @@ import "./RecordingOverlay.css";
 import { commands } from "@/bindings";
 import { syncLanguageFromSettings } from "@/i18n";
 
-type OverlayState = "recording" | "transcribing" | "gemini-sending" | "gemini-ready";
+type OverlayState = "recording" | "transcribing" | "gemini-sending" | "gemini-ready" | "no-audio";
 
 const RecordingOverlay: React.FC = () => {
   const { t } = useTranslation();
@@ -99,6 +99,9 @@ const RecordingOverlay: React.FC = () => {
         )}
         {state === "gemini-ready" && (
           <div className="transcribing-text">{t("overlay.geminiReady")}</div>
+        )}
+        {state === "no-audio" && (
+          <div className="transcribing-text">{t("overlay.noAudio")}</div>
         )}
       </div>
 

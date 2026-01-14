@@ -459,6 +459,7 @@
   "overlay": {
     "transcribing": "Transcribing...",
     "geminiSending": "Sending to Gemini...",
-    "geminiReady": "Answer is ready"
+    "geminiReady": "Answer is ready",
+    "noAudio": "No audio detected"
   }
 }

@@ -286,6 +286,23 @@ pub fn show_gemini_ready_overlay(app_handle: &AppHandle) {
     }
 }
 
+/// Updates overlay to show "No audio detected" message
+pub fn show_no_audio_overlay(app_handle: &AppHandle) {
+    // Check if overlay should be shown based on position setting
+    let settings = settings::get_settings(app_handle);
+    if settings.overlay_position == OverlayPosition::None {
+        return;
+    }
+
+    if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        // Ensure overlay is visible
+        let _ = overlay_window.show();
+        
+        // Emit event to switch to no-audio state
+        let _ = overlay_window.emit("show-overlay", "no-audio");
+    }
+}
+
 /// Updates the overlay window position based on current settings
 pub fn update_overlay_position(app_handle: &AppHandle) {
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {

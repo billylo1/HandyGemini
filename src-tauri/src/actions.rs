@@ -573,6 +573,25 @@ impl ShortcutAction for TranscribeAction {
                 
                 // If sending audio directly to Gemini, skip local transcription and send immediately
                 if send_audio_directly {
+                    // Check if audio was actually captured (minimum 0.5 seconds at 16kHz = 8000 samples)
+                    const MIN_AUDIO_SAMPLES: usize = 8000; // 0.5 seconds at 16kHz
+                    if samples_for_gemini.is_empty() || samples_for_gemini.len() < MIN_AUDIO_SAMPLES {
+                        info!("No audio detected ({} samples), showing message instead of sending to Gemini", samples_for_gemini.len());
+                        
+                        // Show "No audio detected" message in overlay
+                        utils::show_no_audio_overlay(&ah);
+                        
+                        // Hide overlay after a delay
+                        let ah_clone = ah.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+                            utils::hide_recording_overlay(&ah_clone);
+                            change_tray_icon(&ah_clone, TrayIconState::Idle);
+                        });
+                        
+                        return; // Exit early, don't send to Gemini
+                    }
+                    
                     info!("Sending audio directly to Gemini, skipping local transcription");
                     
                     // Show "Sending to Gemini" status on overlay
