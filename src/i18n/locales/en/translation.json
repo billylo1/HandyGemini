@@ -227,6 +227,15 @@
         "label": "Send Audio",
         "description": "Send audio directly to Gemini for server-side transcription instead of using local transcription"
       },
+      "screenshotMode": {
+        "label": "Screenshot Mode",
+        "description": "Choose whether to capture the active window or full screen when Ctrl is pressed with the hotkey",
+        "placeholder": "Select screenshot mode",
+        "options": {
+          "active_window": "Active Window",
+          "full_screen": "Full Screen"
+        }
+      },
       "googleLogin": {
         "title": "Google Login",
         "description": "Sign in with Google (optional, for user profile only). Gemini API uses API keys for authentication.",
@@ -448,6 +457,8 @@
     "description": "Change the language of the Handy interface"
   },
   "overlay": {
-    "transcribing": "Transcribing..."
+    "transcribing": "Transcribing...",
+    "geminiSending": "Sending to Gemini...",
+    "geminiReady": "Answer is ready"
   }
 }

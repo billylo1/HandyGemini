@@ -85,9 +85,20 @@ pub struct ConversationMessage {
     pub text: String,
 }
 
+/// Map user-friendly model names to actual Gemini API model identifiers
+/// All models use v1beta API
+fn map_model_name(model: &str) -> &str {
+    match model {
+        "gemini-3-pro" => "gemini-3-pro",
+        "gemini-3-flash" => "gemini-3-flash-preview",
+        // Allow direct API model names to pass through
+        _ => model,
+    }
+}
+
 /// Send text and optional context (images, audio) to Gemini API for answers
 pub async fn ask_gemini(
-    _app: &AppHandle,
+    app: &AppHandle,
     text: &str,
     model: &str,
     api_key: &str,
@@ -99,6 +110,9 @@ pub async fn ask_gemini(
     if api_key.is_empty() {
         return Err("Gemini API key is not configured".to_string());
     }
+    
+    // Map user-friendly model name to API model identifier
+    let api_model = map_model_name(model);
 
     // Build parts for the request
     let mut parts = Vec::new();
@@ -106,12 +120,22 @@ pub async fn ask_gemini(
     // Check if we have images before processing
     let has_images = context_images.is_some();
     
-    // Screenshot instruction to focus on the biggest canvas area
+    // Only add screenshot instruction for full screen captures (not active window)
+    // Check screenshot mode from settings
+    let is_full_screen = if has_images {
+        use crate::settings::{get_settings, ScreenshotMode};
+        let settings = get_settings(app);
+        settings.screenshot_mode == ScreenshotMode::FullScreen
+    } else {
+        false
+    };
+    
+    // Screenshot instruction to focus on the biggest canvas area (only for full screen)
     let screenshot_instruction = "When analyzing the screenshot, focus on the biggest canvas area only. Ignore UI elements, menus, and sidebars.";
 
-    // Add text with screenshot instruction if images are present
+    // Add text with screenshot instruction if images are present and it's full screen
     if !text.is_empty() {
-        let text_content = if has_images {
+        let text_content = if has_images && is_full_screen {
             format!("{}\n\n{}", screenshot_instruction, text)
         } else {
             text.to_string()
@@ -120,8 +144,8 @@ pub async fn ask_gemini(
             text: Some(text_content),
             inline_data: None,
         });
-    } else if has_images {
-        // If no text but images are present, add instruction as a separate part
+    } else if has_images && is_full_screen {
+        // If no text but images are present and it's full screen, add instruction as a separate part
         parts.push(GeminiPart {
             text: Some(screenshot_instruction.to_string()),
             inline_data: None,
@@ -217,10 +241,11 @@ pub async fn ask_gemini(
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
     // Make request with API key as query parameter (recommended for Gemini API)
+    // All models use v1beta API
     let client = reqwest::Client::new();
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        model, api_key
+        api_model, api_key
     );
 
     debug!("Sending request to Gemini API: {} with {} parts", url, parts.len());

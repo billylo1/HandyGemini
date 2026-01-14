@@ -25,6 +25,7 @@ import { GeminiToggle } from "../GeminiToggle";
 import { GeminiApiKey } from "../GeminiApiKey";
 import { GeminiSendAudio } from "../GeminiSendAudio";
 import { GeminiModelSelector } from "../GeminiModelSelector";
+import { ScreenshotModeSelector } from "../ScreenshotModeSelector";
 
 const DisabledNotice: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -470,6 +471,7 @@ export const PostProcessingSettings: React.FC = () => {
         <GeminiModelSelector descriptionMode="tooltip" grouped={true} />
         <GeminiApiKey descriptionMode="tooltip" grouped={true} />
         <GeminiSendAudio descriptionMode="tooltip" grouped={true} />
+        <ScreenshotModeSelector descriptionMode="tooltip" grouped={true} />
         <GoogleLogin descriptionMode="inline" grouped={true} />
       </SettingsGroup>
     </div>

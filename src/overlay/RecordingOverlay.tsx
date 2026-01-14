@@ -10,7 +10,7 @@ import "./RecordingOverlay.css";
 import { commands } from "@/bindings";
 import { syncLanguageFromSettings } from "@/i18n";
 
-type OverlayState = "recording" | "transcribing";
+type OverlayState = "recording" | "transcribing" | "gemini-sending" | "gemini-ready";
 
 const RecordingOverlay: React.FC = () => {
   const { t } = useTranslation();
@@ -63,7 +63,10 @@ const RecordingOverlay: React.FC = () => {
   const getIcon = () => {
     if (state === "recording") {
       return <MicrophoneIcon />;
+    } else if (state === "transcribing") {
+      return <TranscriptionIcon />;
     } else {
+      // For gemini-sending and gemini-ready, use transcription icon
       return <TranscriptionIcon />;
     }
   };
@@ -90,6 +93,12 @@ const RecordingOverlay: React.FC = () => {
         )}
         {state === "transcribing" && (
           <div className="transcribing-text">{t("overlay.transcribing")}</div>
+        )}
+        {state === "gemini-sending" && (
+          <div className="transcribing-text">{t("overlay.geminiSending")}</div>
+        )}
+        {state === "gemini-ready" && (
+          <div className="transcribing-text">{t("overlay.geminiReady")}</div>
         )}
       </div>
 

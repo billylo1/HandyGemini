@@ -305,6 +305,15 @@ pub struct AppSettings {
     pub gemini_api_key: String,
     #[serde(default = "default_gemini_send_audio")]
     pub gemini_send_audio: bool,
+    #[serde(default = "default_screenshot_mode")]
+    pub screenshot_mode: ScreenshotMode,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum ScreenshotMode {
+    ActiveWindow,
+    FullScreen,
 }
 
 fn default_model() -> String {
@@ -394,6 +403,10 @@ fn default_gemini_api_key() -> String {
 
 fn default_gemini_send_audio() -> bool {
     true
+}
+
+fn default_screenshot_mode() -> ScreenshotMode {
+    ScreenshotMode::ActiveWindow
 }
 
 fn default_post_process_provider_id() -> String {
@@ -613,6 +626,7 @@ pub fn get_default_settings() -> AppSettings {
         gemini_model: default_gemini_model(),
         gemini_api_key: default_gemini_api_key(),
         gemini_send_audio: default_gemini_send_audio(),
+        screenshot_mode: default_screenshot_mode(),
     }
 }
 

@@ -303,6 +303,7 @@ pub fn run() {
         shortcut::change_gemini_model_setting,
         shortcut::change_gemini_api_key_setting,
         shortcut::change_gemini_send_audio_setting,
+        shortcut::change_screenshot_mode_setting,
         trigger_update_check,
         commands::cancel_operation,
         commands::get_app_dir_path,

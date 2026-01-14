@@ -411,6 +411,20 @@ pub fn change_gemini_send_audio_setting(app: AppHandle, send_audio: bool) -> Res
 
 #[tauri::command]
 #[specta::specta]
+pub fn change_screenshot_mode_setting(app: AppHandle, mode: String) -> Result<(), String> {
+    use crate::settings::ScreenshotMode;
+    let mut settings = settings::get_settings(&app);
+    settings.screenshot_mode = match mode.as_str() {
+        "activewindow" => ScreenshotMode::ActiveWindow,
+        "fullscreen" => ScreenshotMode::FullScreen,
+        _ => return Err(format!("Invalid screenshot mode: {}", mode)),
+    };
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_post_process_base_url_setting(
     app: AppHandle,
     provider_id: String,

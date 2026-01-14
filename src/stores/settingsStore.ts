@@ -133,6 +133,8 @@ const settingUpdaters: {
     commands.changeGeminiApiKeySetting(value as string),
   gemini_send_audio: (value) =>
     commands.changeGeminiSendAudioSetting(value as boolean),
+  screenshot_mode: (value) =>
+    commands.changeScreenshotModeSetting(value as string),
 };
 
 export const useSettingsStore = create<SettingsStore>()(

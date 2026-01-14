@@ -27,8 +27,30 @@ pub trait ShortcutAction: Send + Sync {
     fn stop(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str);
 }
 
-// Helper function to capture screenshot of active window
-async fn capture_active_window_screenshot() -> Option<Vec<u8>> {
+// Helper function to capture screenshot (active window or full screen based on settings)
+async fn capture_screenshot(app: &AppHandle) -> Option<Vec<u8>> {
+    let settings = get_settings(app);
+    
+    match settings.screenshot_mode {
+        crate::settings::ScreenshotMode::ActiveWindow => {
+            #[cfg(target_os = "macos")]
+            {
+                capture_active_window_macos().await
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                warn!("Active window capture not yet implemented on this platform, falling back to full screen");
+                capture_full_screen_screenshot().await
+            }
+        }
+        crate::settings::ScreenshotMode::FullScreen => {
+            capture_full_screen_screenshot().await
+        }
+    }
+}
+
+// Helper function to capture full screen screenshot
+async fn capture_full_screen_screenshot() -> Option<Vec<u8>> {
     use screenshots::Screen;
     
     // Get all screens
@@ -41,8 +63,6 @@ async fn capture_active_window_screenshot() -> Option<Vec<u8>> {
     };
     
     // Try to capture the primary screen (or first screen)
-    // Note: This captures the entire screen, not just the active window
-    // For active window capture, we'd need platform-specific APIs
     let screen = screens.first()?;
     
     match screen.capture() {
@@ -59,6 +79,151 @@ async fn capture_active_window_screenshot() -> Option<Vec<u8>> {
         Err(e) => {
             warn!("Failed to capture screenshot: {}", e);
             None
+        }
+    }
+}
+
+// macOS-specific active window capture using AppleScript + screencapture
+#[cfg(target_os = "macos")]
+async fn capture_active_window_macos() -> Option<Vec<u8>> {
+    use std::process::Command;
+    
+    // First, get the active window bounds using AppleScript
+    // Use position and size separately as bounds may not be available for all windows
+    let applescript = r#"
+        tell application "System Events"
+            try
+                set frontApp to first application process whose frontmost is true
+                
+                -- Try to get the frontmost window - use different methods as fallback
+                set frontWindow to missing value
+                try
+                    set frontWindow to front window of frontApp
+                on error
+                    try
+                        -- If front window fails, try first window
+                        set frontWindow to first window of frontApp
+                    on error
+                        -- If that fails, try getting window 1
+                        set frontWindow to window 1 of frontApp
+                    end try
+                end try
+                
+                if frontWindow is missing value then
+                    return "ERROR: No window found"
+                end if
+                
+                -- Get position and size separately (more reliable than bounds)
+                set windowPosition to position of frontWindow
+                set windowSize to size of frontWindow
+                set x to item 1 of windowPosition
+                set y to item 2 of windowPosition
+                set w to item 1 of windowSize
+                set h to item 2 of windowSize
+                
+                -- Return as {left, top, right, bottom}
+                return {x, y, x + w, y + h}
+            on error errorMessage
+                return "ERROR: " & errorMessage
+            end try
+        end tell
+    "#;
+    
+    let bounds_output = match Command::new("osascript")
+        .arg("-e")
+        .arg(applescript)
+        .output()
+    {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            
+            if output.status.success() && !stdout.starts_with("ERROR:") {
+                stdout
+            } else {
+                let error_msg = if stdout.starts_with("ERROR:") {
+                    stdout
+                } else {
+                    format!("{}: {}", stderr, stdout)
+                };
+                warn!("Failed to get window bounds: {}", error_msg);
+                // Fallback to full screen capture if we can't get window bounds
+                warn!("Falling back to full screen capture");
+                return capture_full_screen_screenshot().await;
+            }
+        }
+        Err(e) => {
+            warn!("Failed to execute osascript: {}", e);
+            // Fallback to full screen capture
+            return capture_full_screen_screenshot().await;
+        }
+    };
+    
+    // Parse bounds: AppleScript returns "{left, top, right, bottom}"
+    let bounds: Vec<i32> = bounds_output
+        .trim_matches(|c| c == '{' || c == '}')
+        .split(", ")
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+    
+    if bounds.len() != 4 {
+        warn!("Invalid window bounds format: {}", bounds_output);
+        // Fallback to full screen capture
+        return capture_full_screen_screenshot().await;
+    }
+    
+    let left = bounds[0];
+    let top = bounds[1];
+    let right = bounds[2];
+    let bottom = bounds[3];
+    
+    // Validate bounds
+    if right <= left || bottom <= top {
+        warn!("Invalid window bounds: left={}, top={}, right={}, bottom={}", left, top, right, bottom);
+        return capture_full_screen_screenshot().await;
+    }
+    
+    // Calculate width and height
+    let width = right - left;
+    let height = bottom - top;
+    
+    // Use screencapture -R to capture the specific region
+    // Format: -R"x,y,width,height" where x,y is top-left corner
+    let temp_file = std::env::temp_dir().join(format!("handy_screenshot_{}.png", std::process::id()));
+    let region_arg = format!("-R{},{},{},{}", left, top, width, height);
+    
+    match Command::new("screencapture")
+        .arg("-x") // No sound
+        .arg(&region_arg) // Capture specific region
+        .arg("-t") // Format: png
+        .arg("png") // PNG format
+        .arg(temp_file.to_str().unwrap())
+        .output()
+    {
+        Ok(output) => {
+            if output.status.success() {
+                // Read the file
+                match std::fs::read(&temp_file) {
+                    Ok(data) => {
+                        // Clean up temp file
+                        let _ = std::fs::remove_file(&temp_file);
+                        Some(data)
+                    }
+                    Err(e) => {
+                        warn!("Failed to read screenshot file: {}", e);
+                        capture_full_screen_screenshot().await
+                    }
+                }
+            } else {
+                warn!("screencapture command failed: {:?}", String::from_utf8_lossy(&output.stderr));
+                // Fallback to full screen capture
+                capture_full_screen_screenshot().await
+            }
+        }
+        Err(e) => {
+            warn!("Failed to execute screencapture: {}", e);
+            // Fallback to full screen capture
+            capture_full_screen_screenshot().await
         }
     }
 }
@@ -369,7 +534,7 @@ impl ShortcutAction for TranscribeAction {
             let clean_shortcut = shortcut_str.replace("|SCREENSHOT", "");
             let screenshot = if should_capture_screenshot(&shortcut_str) {
                 info!("Ctrl detected in shortcut '{}', capturing screenshot", clean_shortcut);
-                capture_active_window_screenshot().await
+                capture_screenshot(&ah).await
             } else {
                 None
             };
@@ -470,6 +635,10 @@ impl ShortcutAction for TranscribeAction {
                                 if send_audio {
                                     // Send audio directly to Gemini for server-side transcription
                                     info!("Gemini send_audio enabled, sending audio samples to Gemini");
+                                    
+                                    // Show "Sending to Gemini" status on overlay
+                                    utils::show_gemini_sending_overlay(&ah);
+                                    
                                     let audio_samples = samples_for_gemini.clone();
                                     let conv_mgr_clone = Arc::clone(&conv_mgr);
                                     let screenshot_for_gemini = screenshot.clone();
@@ -491,6 +660,12 @@ impl ShortcutAction for TranscribeAction {
                                         {
                                             Ok(gemini_response_data) => {
                                                 info!("Received Gemini response from audio (answer length: {} chars)", gemini_response_data.answer.len());
+                                                
+                                                // Show "Answer is ready" status before hiding
+                                                utils::show_gemini_ready_overlay(&ah_clone);
+                                                
+                                                // Small delay to show "ready" status, then hide overlay
+                                                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                                                 
                                                 // Hide overlay and update tray icon when response is received
                                                 utils::hide_recording_overlay(&ah_clone);
@@ -522,6 +697,10 @@ impl ShortcutAction for TranscribeAction {
                                 } else {
                                     // Send transcribed text to Gemini
                                     info!("Gemini is enabled, sending transcription to Gemini");
+                                    
+                                    // Show "Sending to Gemini" status on overlay
+                                    utils::show_gemini_sending_overlay(&ah);
+                                    
                                     let transcription_for_gemini = transcription.clone();
                                     let conv_mgr_clone = Arc::clone(&conv_mgr);
                                     let screenshot_for_gemini = screenshot.clone();
@@ -548,6 +727,12 @@ impl ShortcutAction for TranscribeAction {
                                         {
                                             Ok(gemini_response_data) => {
                                                 info!("Received Gemini response (answer length: {} chars)", gemini_response_data.answer.len());
+                                                
+                                                // Show "Answer is ready" status before hiding
+                                                utils::show_gemini_ready_overlay(&ah_clone);
+                                                
+                                                // Small delay to show "ready" status, then hide overlay
+                                                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                                                 
                                                 // Hide overlay and update tray icon when response is received
                                                 utils::hide_recording_overlay(&ah_clone);

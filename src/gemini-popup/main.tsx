@@ -206,38 +206,38 @@ const GeminiPopup: React.FC = () => {
               >
                 {index > 0 && <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid #e0e0e0" }} />}
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
+                  remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
                   rehypePlugins={[rehypeKatex]}
-                  components={{
-                    code({ node, inline, className, children, ...props }: any) {
-                      if (inline) {
+                    components={{
+                      code({ node, inline, className, children, ...props }: any) {
+                        if (inline) {
+                          return (
+                            <code className="inline-code" {...props}>
+                              {children}
+                            </code>
+                          );
+                        }
+                        // For code blocks (not inline)
                         return (
-                          <code className="inline-code" {...props}>
-                            {children}
-                          </code>
+                          <pre className="code-block">
+                            <code className={className || ''} {...props}>
+                              {String(children).replace(/\n$/, '')}
+                            </code>
+                          </pre>
                         );
-                      }
-                      // For code blocks (not inline)
-                      return (
-                        <pre className="code-block">
-                          <code className={className || ''} {...props}>
-                            {String(children).replace(/\n$/, '')}
-                          </code>
-                        </pre>
-                      );
-                    },
-                    pre({ children, ...props }: any) {
-                      // If children is a code element, don't wrap it again
-                      if (children && typeof children === 'object' && 'type' in children && children.type === 'code') {
-                        return <>{children}</>;
-                      }
-                      return <pre className="code-block" {...props}>{children}</pre>;
-                    },
-                  }}
-                >
-                  {response}
-                </ReactMarkdown>
-              </div>
+                      },
+                      pre({ children, ...props }: any) {
+                        // If children is a code element, don't wrap it again
+                        if (children && typeof children === 'object' && 'type' in children && children.type === 'code') {
+                          return <>{children}</>;
+                        }
+                        return <pre className="code-block" {...props}>{children}</pre>;
+                      },
+                    }}
+                  >
+                    {response}
+                  </ReactMarkdown>
+                </div>
             ))}
           </div>
         )}
