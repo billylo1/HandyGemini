@@ -53,11 +53,20 @@ jobs:
       - name: Build frontend
         run: bun run build
 
+      - name: Temporarily disable updater artifacts for Windows build
+        shell: bash
+        run: |
+          # Create a backup of tauri.conf.json
+          cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.backup
+          # Disable createUpdaterArtifacts for Windows build to avoid signing requirement
+          # Note: jq is available on GitHub Actions Windows runners
+          jq '.bundle.createUpdaterArtifacts = false' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUSTFLAGS: -C target-feature=-crt-static
         with:
           tagName: v${{ steps.get-version.outputs.version }}
           releaseName: HandyGemini v${{ steps.get-version.outputs.version }} (Windows)
@@ -65,6 +74,14 @@ jobs:
           args: --target x86_64-pc-windows-msvc
           releaseDraft: false
           prerelease: false
+
+      - name: Restore tauri.conf.json
+        if: always()
+        shell: bash
+        run: |
+          if [ -f src-tauri/tauri.conf.json.backup ]; then
+            mv src-tauri/tauri.conf.json.backup src-tauri/tauri.conf.json
+          fi
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
