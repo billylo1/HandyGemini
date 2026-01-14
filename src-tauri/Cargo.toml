@@ -80,6 +80,8 @@ hyper = { version = "1.0", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 http-body-util = "0.1"
 dotenv = "0.15"
+screenshots = "0.7"
+image = "0.25"
 
 [target.'cfg(unix)'.dependencies]
 signal-hook = "0.3"

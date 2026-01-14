@@ -1,4 +1,4 @@
-use log::{error, warn};
+use log::{error, warn, info};
 use serde::Serialize;
 use specta::Type;
 use std::sync::Arc;
@@ -660,6 +660,31 @@ pub fn change_app_language_setting(app: AppHandle, language: String) -> Result<(
     Ok(())
 }
 
+/// Helper function to add Ctrl to a shortcut string
+fn add_ctrl_to_shortcut(shortcut: &str) -> String {
+    let shortcut_lower = shortcut.to_lowercase();
+    if shortcut_lower.contains("ctrl") || shortcut_lower.contains("control") {
+        return shortcut.to_string(); // Already has Ctrl
+    }
+    
+    // Add Ctrl at the beginning
+    format!("ctrl+{}", shortcut)
+}
+
+/// Helper function to remove Ctrl from a shortcut string
+fn remove_ctrl_from_shortcut(shortcut: &str) -> String {
+    let parts: Vec<&str> = shortcut.split('+').collect();
+    let filtered: Vec<&str> = parts
+        .iter()
+        .filter(|part| {
+            let part_lower = part.trim().to_lowercase();
+            part_lower != "ctrl" && part_lower != "control"
+        })
+        .copied()
+        .collect();
+    filtered.join("+")
+}
+
 /// Validate that a shortcut contains at least one non-modifier key.
 /// The tauri-plugin-global-shortcut library requires at least one main key.
 fn validate_shortcut_string(raw: &str) -> Result<(), String> {
@@ -751,102 +776,193 @@ pub fn unregister_cancel_shortcut(app: &AppHandle) {
 }
 
 pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
-    // Validate human-level rules first
-    if let Err(e) = validate_shortcut_string(&binding.current_binding) {
-        warn!(
-            "_register_shortcut validation error for binding '{}': {}",
-            binding.current_binding, e
-        );
+    // Helper to normalize shortcut string for platform compatibility
+    // On macOS, "ctrl" should be "control" for tauri-plugin-global-shortcut
+    let normalize = |s: &str| -> String {
+        #[cfg(target_os = "macos")]
+        {
+            s.replace("ctrl+", "control+").replace("+ctrl", "+control")
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            s.to_string()
+        }
+    };
+    
+    // Create both variants: with and without Ctrl
+    let has_ctrl = binding.current_binding.to_lowercase().contains("ctrl") 
+        || binding.current_binding.to_lowercase().contains("control");
+    
+    let shortcut_without_ctrl = if has_ctrl {
+        remove_ctrl_from_shortcut(&binding.current_binding)
+    } else {
+        binding.current_binding.clone()
+    };
+    
+    let shortcut_with_ctrl = if has_ctrl {
+        binding.current_binding.clone()
+    } else {
+        add_ctrl_to_shortcut(&binding.current_binding)
+    };
+    
+    // Normalize both shortcuts
+    let normalized_without_ctrl = normalize(&shortcut_without_ctrl);
+    let normalized_with_ctrl = normalize(&shortcut_with_ctrl);
+    
+    // Validate both shortcuts
+    if let Err(e) = validate_shortcut_string(&normalized_without_ctrl) {
+        warn!("Validation error for shortcut without Ctrl '{}': {}", normalized_without_ctrl, e);
         return Err(e);
     }
-
-    // Parse shortcut and return error if it fails
-    let shortcut = match binding.current_binding.parse::<Shortcut>() {
+    if let Err(e) = validate_shortcut_string(&normalized_with_ctrl) {
+        warn!("Validation error for shortcut with Ctrl '{}': {}", normalized_with_ctrl, e);
+        return Err(e);
+    }
+    
+    // Parse both shortcuts
+    let shortcut_without_ctrl_parsed = match normalized_without_ctrl.parse::<Shortcut>() {
         Ok(s) => s,
         Err(e) => {
-            let error_msg = format!(
-                "Failed to parse shortcut '{}': {}",
-                binding.current_binding, e
-            );
-            error!("_register_shortcut parse error: {}", error_msg);
+            let error_msg = format!("Failed to parse shortcut without Ctrl '{}': {}", normalized_without_ctrl, e);
+            error!("{}", error_msg);
             return Err(error_msg);
         }
     };
-
-    // Prevent duplicate registrations that would silently shadow one another
-    if app.global_shortcut().is_registered(shortcut) {
-        let error_msg = format!("Shortcut '{}' is already in use", binding.current_binding);
-        warn!("_register_shortcut duplicate error: {}", error_msg);
-        return Err(error_msg);
-    }
-
-    // Clone binding.id for use in the closure
+    
+    let shortcut_with_ctrl_parsed = match normalized_with_ctrl.parse::<Shortcut>() {
+        Ok(s) => s,
+        Err(e) => {
+            let error_msg = format!("Failed to parse shortcut with Ctrl '{}': {}", normalized_with_ctrl, e);
+            error!("{}", error_msg);
+            return Err(error_msg);
+        }
+    };
+    
+    // Clone binding.id for use in the closures
     let binding_id_for_closure = binding.id.clone();
+    let binding_id_for_log = binding.id.clone();
+    
+    // Register shortcut without Ctrl (normal operation)
+    if !app.global_shortcut().is_registered(shortcut_without_ctrl_parsed) {
+        info!("Registering shortcut without Ctrl '{}' (normalized: '{}') for binding '{}'", 
+            shortcut_without_ctrl, normalized_without_ctrl, binding_id_for_log);
+        
+        let binding_id_clone = binding_id_for_closure.clone();
+        app.global_shortcut()
+            .on_shortcut(shortcut_without_ctrl_parsed, move |ah, scut, event| {
+                if scut == &shortcut_without_ctrl_parsed {
+                    let shortcut_string = scut.into_string();
+                    info!("Shortcut triggered (no Ctrl): '{}' for binding '{}', state: {:?}", 
+                        shortcut_string, binding_id_clone, event.state);
+                    handle_shortcut_event(ah, &binding_id_clone, &shortcut_string, &event, false);
+                }
+            })
+            .map_err(|e| {
+                let error_msg = format!("Couldn't register shortcut without Ctrl '{}': {}", normalized_without_ctrl, e);
+                error!("{}", error_msg);
+                error_msg
+            })?;
+    } else {
+        warn!("Shortcut without Ctrl '{}' is already registered", normalized_without_ctrl);
+    }
+    
+    // Register shortcut with Ctrl (with screenshot)
+    if !app.global_shortcut().is_registered(shortcut_with_ctrl_parsed) {
+        info!("Registering shortcut with Ctrl '{}' (normalized: '{}') for binding '{}'", 
+            shortcut_with_ctrl, normalized_with_ctrl, binding_id_for_log);
+        
+        let binding_id_clone = binding_id_for_closure.clone();
+        app.global_shortcut()
+            .on_shortcut(shortcut_with_ctrl_parsed, move |ah, scut, event| {
+                if scut == &shortcut_with_ctrl_parsed {
+                    let shortcut_string = scut.into_string();
+                    info!("Shortcut triggered (with Ctrl): '{}' for binding '{}', state: {:?}", 
+                        shortcut_string, binding_id_clone, event.state);
+                    handle_shortcut_event(ah, &binding_id_clone, &shortcut_string, &event, true);
+                }
+            })
+            .map_err(|e| {
+                let error_msg = format!("Couldn't register shortcut with Ctrl '{}': {}", normalized_with_ctrl, e);
+                error!("{}", error_msg);
+                error_msg
+            })?;
+    } else {
+        warn!("Shortcut with Ctrl '{}' is already registered", normalized_with_ctrl);
+    }
+    
+    Ok(())
+}
 
-    app.global_shortcut()
-        .on_shortcut(shortcut, move |ah, scut, event| {
-            if scut == &shortcut {
-                let shortcut_string = scut.into_string();
-                let settings = get_settings(ah);
+fn handle_shortcut_event(
+    app: &AppHandle,
+    binding_id: &str,
+    shortcut_string: &str,
+    event: &tauri_plugin_global_shortcut::ShortcutEvent,
+    has_ctrl: bool,
+) {
+    let settings = get_settings(app);
 
-                if let Some(action) = ACTION_MAP.get(&binding_id_for_closure) {
-                    if binding_id_for_closure == "cancel" {
-                        let audio_manager = ah.state::<Arc<AudioRecordingManager>>();
-                        if audio_manager.is_recording() && event.state == ShortcutState::Pressed {
-                            action.start(ah, &binding_id_for_closure, &shortcut_string);
-                        }
-                        return;
-                    } else if settings.push_to_talk {
-                        if event.state == ShortcutState::Pressed {
-                            action.start(ah, &binding_id_for_closure, &shortcut_string);
-                        } else if event.state == ShortcutState::Released {
-                            action.stop(ah, &binding_id_for_closure, &shortcut_string);
-                        }
-                    } else {
-                        // Toggle mode: toggle on press only
-                        if event.state == ShortcutState::Pressed {
-                            // Determine action and update state while holding the lock,
-                            // but RELEASE the lock before calling the action to avoid deadlocks.
-                            // (Actions may need to acquire the lock themselves, e.g., cancel_current_operation)
-                            let should_start: bool;
-                            {
-                                let toggle_state_manager = ah.state::<ManagedToggleState>();
-                                let mut states = toggle_state_manager
-                                    .lock()
-                                    .expect("Failed to lock toggle state manager");
-
-                                let is_currently_active = states
-                                    .active_toggles
-                                    .entry(binding_id_for_closure.clone())
-                                    .or_insert(false);
-
-                                should_start = !*is_currently_active;
-                                *is_currently_active = should_start;
-                            } // Lock released here
-
-                            // Now call the action without holding the lock
-                            if should_start {
-                                action.start(ah, &binding_id_for_closure, &shortcut_string);
-                            } else {
-                                action.stop(ah, &binding_id_for_closure, &shortcut_string);
-                            }
-                        }
-                    }
+    if let Some(action) = ACTION_MAP.get(binding_id) {
+        if binding_id == "cancel" {
+            let audio_manager = app.state::<Arc<AudioRecordingManager>>();
+            if audio_manager.is_recording() && event.state == ShortcutState::Pressed {
+                action.start(app, binding_id, shortcut_string);
+            }
+            return;
+        } else if settings.push_to_talk {
+            if event.state == ShortcutState::Pressed {
+                // Pass has_ctrl flag via shortcut string - we'll append a marker
+                let shortcut_with_flag = if has_ctrl {
+                    format!("{}|SCREENSHOT", shortcut_string)
                 } else {
-                    warn!(
-                        "No action defined in ACTION_MAP for shortcut ID '{}'. Shortcut: '{}', State: {:?}",
-                        binding_id_for_closure, shortcut_string, event.state
-                    );
+                    shortcut_string.to_string()
+                };
+                action.start(app, binding_id, &shortcut_with_flag);
+            } else if event.state == ShortcutState::Released {
+                action.stop(app, binding_id, shortcut_string);
+            }
+        } else {
+            // Toggle mode: toggle on press only
+            if event.state == ShortcutState::Pressed {
+                // Determine action and update state while holding the lock,
+                // but RELEASE the lock before calling the action to avoid deadlocks.
+                let should_start: bool;
+                {
+                    let toggle_state_manager = app.state::<ManagedToggleState>();
+                    let mut states = toggle_state_manager
+                        .lock()
+                        .expect("Failed to lock toggle state manager");
+
+                    let is_currently_active = states
+                        .active_toggles
+                        .entry(binding_id.to_string())
+                        .or_insert(false);
+
+                    should_start = !*is_currently_active;
+                    *is_currently_active = should_start;
+                } // Lock released here
+
+                // Now call the action without holding the lock
+                // Pass has_ctrl flag via shortcut string
+                let shortcut_with_flag = if has_ctrl {
+                    format!("{}|SCREENSHOT", shortcut_string)
+                } else {
+                    shortcut_string.to_string()
+                };
+                
+                if should_start {
+                    action.start(app, binding_id, &shortcut_with_flag);
+                } else {
+                    action.stop(app, binding_id, shortcut_string);
                 }
             }
-        })
-        .map_err(|e| {
-            let error_msg = format!("Couldn't register shortcut '{}': {}", binding.current_binding, e);
-            error!("_register_shortcut registration error: {}", error_msg);
-            error_msg
-        })?;
-
-    Ok(())
+        }
+    } else {
+        warn!(
+            "No action defined in ACTION_MAP for shortcut ID '{}'. Shortcut: '{}', State: {:?}",
+            binding_id, shortcut_string, event.state
+        );
+    }
 }
 
 pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {

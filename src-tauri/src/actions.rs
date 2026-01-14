@@ -13,7 +13,7 @@ use crate::utils::{self, show_recording_overlay, show_transcribing_overlay};
 use crate::gemini_popup;
 use crate::ManagedToggleState;
 use ferrous_opencc::{config::BuiltinConfig, OpenCC};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,6 +25,53 @@ use tauri::Manager;
 pub trait ShortcutAction: Send + Sync {
     fn start(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str);
     fn stop(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str);
+}
+
+// Helper function to capture screenshot of active window
+async fn capture_active_window_screenshot() -> Option<Vec<u8>> {
+    use screenshots::Screen;
+    
+    // Get all screens
+    let screens = match Screen::all() {
+        Ok(screens) => screens,
+        Err(e) => {
+            warn!("Failed to get screens: {}", e);
+            return None;
+        }
+    };
+    
+    // Try to capture the primary screen (or first screen)
+    // Note: This captures the entire screen, not just the active window
+    // For active window capture, we'd need platform-specific APIs
+    let screen = screens.first()?;
+    
+    match screen.capture() {
+        Ok(image) => {
+            // Use the to_png() method to get PNG bytes directly
+            match image.to_png(None) {
+                Ok(png_data) => Some(png_data),
+                Err(e) => {
+                    warn!("Failed to convert screenshot to PNG: {}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Failed to capture screenshot: {}", e);
+            None
+        }
+    }
+}
+
+// Helper function to check if Ctrl is in the shortcut string or if screenshot flag is set
+fn should_capture_screenshot(shortcut_str: &str) -> bool {
+    // Check for the SCREENSHOT flag we append when Ctrl is pressed
+    if shortcut_str.contains("|SCREENSHOT") {
+        return true;
+    }
+    // Fallback: check if Ctrl is in the shortcut string
+    let shortcut_lower = shortcut_str.to_lowercase();
+    shortcut_lower.contains("ctrl") || shortcut_lower.contains("control")
 }
 
 // Transcribe Action
@@ -211,8 +258,9 @@ async fn maybe_convert_chinese_variant(
 }
 
 impl ShortcutAction for TranscribeAction {
-    fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
+    fn start(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str) {
         let start_time = Instant::now();
+        info!("TranscribeAction::start called for binding: {} with shortcut: {}", binding_id, shortcut_str);
         debug!("TranscribeAction::start called for binding: {}", binding_id);
 
         // Load model in the background
@@ -291,7 +339,7 @@ impl ShortcutAction for TranscribeAction {
         );
     }
 
-    fn stop(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
+    fn stop(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str) {
         // Unregister the cancel shortcut when transcription stops
         shortcut::unregister_cancel_shortcut(app);
 
@@ -313,8 +361,18 @@ impl ShortcutAction for TranscribeAction {
         play_feedback_sound(app, SoundType::Stop);
 
         let binding_id = binding_id.to_string(); // Clone binding_id for the async task
+        let shortcut_str = shortcut_str.to_string(); // Clone shortcut_str for the async task
 
         tauri::async_runtime::spawn(async move {
+            // Check if screenshot should be captured (Ctrl was pressed)
+            // Remove the SCREENSHOT flag from shortcut_str for logging
+            let clean_shortcut = shortcut_str.replace("|SCREENSHOT", "");
+            let screenshot = if should_capture_screenshot(&shortcut_str) {
+                info!("Ctrl detected in shortcut '{}', capturing screenshot", clean_shortcut);
+                capture_active_window_screenshot().await
+            } else {
+                None
+            };
             let binding_id = binding_id.clone(); // Clone for the inner async task
             debug!(
                 "Starting async transcription task for binding: {}",
@@ -414,13 +472,17 @@ impl ShortcutAction for TranscribeAction {
                                     info!("Gemini send_audio enabled, sending audio samples to Gemini");
                                     let audio_samples = samples_for_gemini.clone();
                                     let conv_mgr_clone = Arc::clone(&conv_mgr);
+                                    let screenshot_for_gemini = screenshot.clone();
                                     tauri::async_runtime::spawn(async move {
+                                        // Prepare context images if screenshot was captured
+                                        let context_images = screenshot_for_gemini.map(|img| vec![img]);
+                                        
                                         match gemini_client::ask_gemini(
                                             &ah_clone,
                                             "", // Empty text when sending audio
                                             &gemini_model,
                                             &gemini_api_key,
-                                            None, // No images for now
+                                            context_images, // Screenshot if Ctrl was pressed
                                             Some(audio_samples), // Send audio samples
                                             Some(16000), // Sample rate (16kHz, standard for Whisper)
                                             Some(conversation_history.clone()),
@@ -455,18 +517,22 @@ impl ShortcutAction for TranscribeAction {
                                     info!("Gemini is enabled, sending transcription to Gemini");
                                     let transcription_for_gemini = transcription.clone();
                                     let conv_mgr_clone = Arc::clone(&conv_mgr);
+                                    let screenshot_for_gemini = screenshot.clone();
                                     tauri::async_runtime::spawn(async move {
                                         info!("Sending transcription to Gemini: {}", transcription_for_gemini);
                                         
                                         // Add user message to conversation history
                                         conv_mgr_clone.add_user_message(transcription_for_gemini.clone());
                                         
+                                        // Prepare context images if screenshot was captured
+                                        let context_images = screenshot_for_gemini.map(|img| vec![img]);
+                                        
                                         match gemini_client::ask_gemini(
                                             &ah_clone,
                                             &transcription_for_gemini,
                                             &gemini_model,
                                             &gemini_api_key,
-                                            None, // No images for now
+                                            context_images, // Screenshot if Ctrl was pressed
                                             None, // No audio context for now
                                             None, // No sample rate
                                             Some(conversation_history.clone()),
