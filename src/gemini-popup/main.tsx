@@ -5,9 +5,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import ReactDOM from "react-dom/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { commands } from "../bindings";
 import { formatKeyCombination } from "../lib/utils/keyboard";
 import { type } from "@tauri-apps/plugin-os";
+import "katex/dist/katex.min.css";
 
 const GeminiPopup: React.FC = () => {
   const [responses, setResponses] = useState<string[]>([]);
@@ -203,7 +206,34 @@ const GeminiPopup: React.FC = () => {
               >
                 {index > 0 && <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid #e0e0e0" }} />}
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{
+                    code({ node, inline, className, children, ...props }: any) {
+                      if (inline) {
+                        return (
+                          <code className="inline-code" {...props}>
+                            {children}
+                          </code>
+                        );
+                      }
+                      // For code blocks (not inline)
+                      return (
+                        <pre className="code-block">
+                          <code className={className || ''} {...props}>
+                            {String(children).replace(/\n$/, '')}
+                          </code>
+                        </pre>
+                      );
+                    },
+                    pre({ children, ...props }: any) {
+                      // If children is a code element, don't wrap it again
+                      if (children && typeof children === 'object' && 'type' in children && children.type === 'code') {
+                        return <>{children}</>;
+                      }
+                      return <pre className="code-block" {...props}>{children}</pre>;
+                    },
+                  }}
                 >
                   {response}
                 </ReactMarkdown>
