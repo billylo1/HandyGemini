@@ -1,0 +1,8 @@
+# Cargo configuration to ensure consistent C++ runtime on Windows
+# This prevents linker errors from runtime library mismatches
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=-crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=-crt-static"]
