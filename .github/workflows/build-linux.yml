@@ -73,6 +73,14 @@ jobs:
       - name: Build frontend
         run: bun run build
 
+      - name: Temporarily disable updater artifacts for Linux build
+        run: |
+          # Create a backup of tauri.conf.json
+          cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.backup
+          # Disable createUpdaterArtifacts for Linux build to avoid signing requirement
+          jq '.bundle.createUpdaterArtifacts = false' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
+
       - name: Build Tauri app (DEB)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -86,6 +94,13 @@ jobs:
           args: --target x86_64-unknown-linux-gnu --bundles deb
           releaseDraft: false
           prerelease: false
+
+      - name: Restore tauri.conf.json
+        if: always()
+        run: |
+          if [ -f src-tauri/tauri.conf.json.backup ]; then
+            mv src-tauri/tauri.conf.json.backup src-tauri/tauri.conf.json
+          fi
 
       - name: Upload DEB artifacts
         uses: actions/upload-artifact@v4
@@ -152,6 +167,14 @@ jobs:
       - name: Build frontend
         run: bun run build
 
+      - name: Temporarily disable updater artifacts for Linux build
+        run: |
+          # Create a backup of tauri.conf.json
+          cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.backup
+          # Disable createUpdaterArtifacts for Linux build to avoid signing requirement
+          jq '.bundle.createUpdaterArtifacts = false' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
+
       - name: Build Tauri app (AppImage and RPM)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -165,6 +188,13 @@ jobs:
           args: --target x86_64-unknown-linux-gnu --bundles appimage,rpm
           releaseDraft: false
           prerelease: false
+
+      - name: Restore tauri.conf.json
+        if: always()
+        run: |
+          if [ -f src-tauri/tauri.conf.json.backup ]; then
+            mv src-tauri/tauri.conf.json.backup src-tauri/tauri.conf.json
+          fi
 
       - name: Upload AppImage and RPM artifacts
         uses: actions/upload-artifact@v4
