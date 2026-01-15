@@ -171,8 +171,8 @@ jobs:
         run: |
           # Create a backup of tauri.conf.json
           cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.backup
-          # Disable createUpdaterArtifacts for Linux build to avoid signing requirement
-          jq '.bundle.createUpdaterArtifacts = false' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          # Disable createUpdaterArtifacts and remove pubkey for Linux build to avoid signing requirement
+          jq '.bundle.createUpdaterArtifacts = false | .plugins.updater.pubkey = ""' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
           mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
 
       - name: Build Tauri app (AppImage and RPM)
