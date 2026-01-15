@@ -58,20 +58,21 @@ jobs:
 
       - name: Find Developer ID certificate
         id: find-cert
-        if: inputs.enable_notarization
         run: |
           # Find Developer ID Application certificate
           DEVELOPER_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/' || echo "")
-          if [ -z "$DEVELOPER_ID" ]; then
-            echo "Error: No Developer ID Application certificate found in keychain."
-            echo "Please install a Developer ID Application certificate."
-            exit 1
+          if [ -n "$DEVELOPER_ID" ]; then
+            echo "certificate=$DEVELOPER_ID" >> "$GITHUB_OUTPUT"
+            echo "has_certificate=true" >> "$GITHUB_OUTPUT"
+            echo "Found certificate: $DEVELOPER_ID"
+          else
+            echo "has_certificate=false" >> "$GITHUB_OUTPUT"
+            echo "Warning: No Developer ID Application certificate found in keychain."
+            echo "Build will proceed without code signing."
           fi
-          echo "certificate=$DEVELOPER_ID" >> "$GITHUB_OUTPUT"
-          echo "Found certificate: $DEVELOPER_ID"
 
       - name: Update signing identity in tauri.conf.json
-        if: inputs.enable_notarization && steps.find-cert.outputs.certificate != ''
+        if: steps.find-cert.outputs.has_certificate == 'true'
         run: |
           # Create backup of tauri.conf.json
           cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.backup
@@ -79,6 +80,18 @@ jobs:
           jq --arg cert "${{ steps.find-cert.outputs.certificate }}" '.bundle.macOS.signingIdentity = $cert' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
           mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
           echo "Updated signingIdentity: ${{ steps.find-cert.outputs.certificate }}"
+
+      - name: Disable code signing if no certificate found
+        if: steps.find-cert.outputs.has_certificate == 'false'
+        run: |
+          # Create backup of tauri.conf.json if not already done
+          if [ ! -f src-tauri/tauri.conf.json.backup ]; then
+            cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.backup
+          fi
+          # Disable code signing by setting signingIdentity to "-"
+          jq '.bundle.macOS.signingIdentity = "-"' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
+          echo "Disabled code signing (no certificate found)"
 
       - name: Check if signing key is available
         id: check-signing
@@ -111,7 +124,7 @@ jobs:
           fi
 
       - name: Import Apple Developer Certificate
-        if: inputs.enable_notarization && steps.check-cert.outputs.has_certificate == 'true'
+        if: inputs.enable_notarization && steps.check-cert.outputs.has_certificate == 'true' && secrets.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
