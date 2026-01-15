@@ -124,7 +124,7 @@ jobs:
           fi
 
       - name: Import Apple Developer Certificate
-        if: inputs.enable_notarization && steps.check-cert.outputs.has_certificate == 'true' && secrets.APPLE_CERTIFICATE != ''
+        if: inputs.enable_notarization && steps.check-cert.outputs.has_certificate == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
