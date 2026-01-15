@@ -88,10 +88,11 @@ jobs:
           if [ ! -f src-tauri/tauri.conf.json.backup ]; then
             cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.backup
           fi
-          # Disable code signing by setting signingIdentity to "-"
-          jq '.bundle.macOS.signingIdentity = "-"' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          # Disable code signing by removing signingIdentity (set to null)
+          # Tauri will skip signing if signingIdentity is null or missing
+          jq 'del(.bundle.macOS.signingIdentity)' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
           mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
-          echo "Disabled code signing (no certificate found)"
+          echo "Disabled code signing (no certificate found, removed signingIdentity)"
 
       - name: Check if signing key is available
         id: check-signing
